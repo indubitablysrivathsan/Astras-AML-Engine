@@ -1,0 +1,120 @@
+"""
+RAG Service
+Handles SAR template management and vector store operations.
+"""
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import CHROMA_DIR, DATA_DIR
+
+# SAR Templates (embedded for portability)
+SAR_TEMPLATES = [
+    {
+        "typology": "structuring",
+        "narrative": "INTRODUCTION\nThis Suspicious Activity Report concerns [CUSTOMER_NAME], a [OCCUPATION] who has been conducting a pattern of cash deposits designed to evade reporting requirements.\n\nWHO\n[CUSTOMER_NAME] is a [OCCUPATION] residing at [ADDRESS]. The customer opened their account on [ACCOUNT_OPEN_DATE] with reported annual income of $[ANNUAL_INCOME].\n\nWHAT\nBetween [START_DATE] and [END_DATE], the customer made [NUM_DEPOSITS] cash deposits totaling $[TOTAL_AMOUNT]. Each deposit was strategically kept below $10,000.\n\nWHEN\nThe suspicious activity began on [START_DATE] and continued through [END_DATE].\n\nWHERE\nDeposits were made at [NUM_BRANCHES] different branch locations.\n\nWHY SUSPICIOUS\nThis activity is consistent with structuring to evade CTR filing requirements.\n\nHOW\nThe customer appears to be breaking larger amounts into smaller deposits to avoid triggering CTR filings.\n\nCONCLUSION\nBased on the pattern, this activity is reported as suspected structuring.",
+        "key_elements": ["cash deposits", "multiple branches", "below $10,000", "consistent pattern"]
+    },
+    {
+        "typology": "rapid_movement",
+        "narrative": "INTRODUCTION\nThis SAR documents suspicious rapid movement of funds where large sums were deposited and immediately transferred to foreign beneficiaries.\n\nWHO\n[CUSTOMER_NAME] has transaction volumes inconsistent with reported income of $[ANNUAL_INCOME].\n\nWHAT\nFunds were deposited and wire transferred out within hours. This pattern repeated multiple times.\n\nWHEN\nThe suspicious activity occurred between [START_DATE] and [END_DATE] with each cycle following a consistent pattern.\n\nWHERE\nFunds were transferred to accounts in high-risk jurisdictions.\n\nWHY SUSPICIOUS\nThe rapid movement with minimal retention time is consistent with layering in money laundering.\n\nHOW\nThe account is being used as a conduit for pass-through transactions.\n\nCONCLUSION\nThe rapid movement pattern indicates potential money laundering activity.",
+        "key_elements": ["rapid transfers", "foreign beneficiaries", "pass-through account", "layering"]
+    },
+    {
+        "typology": "trade_based",
+        "narrative": "INTRODUCTION\nThis SAR concerns suspicious trade finance activity where transaction values appear inconsistent with goods described.\n\nWHO\n[CUSTOMER_NAME] operates a business engaged in international trade.\n\nWHAT\nInvoice values for goods substantially exceed fair market value.\n\nWHEN\nTransactions occurred between [START_DATE] and [END_DATE] with increasing frequency.\n\nWHERE\nCounterparties located in high-risk jurisdictions.\n\nWHY SUSPICIOUS\nOver-valuation of goods is consistent with trade-based money laundering.\n\nHOW\nOver-invoicing to justify value transfers that may not correlate with actual goods.\n\nCONCLUSION\nThe combination supports filing for suspected trade-based money laundering.",
+        "key_elements": ["trade finance", "over-invoicing", "high-risk jurisdiction", "value transfer"]
+    },
+    {
+        "typology": "shell_company",
+        "narrative": "INTRODUCTION\nThis report concerns a business whose corporate structure and transaction patterns suggest a shell company.\n\nWHO\n[COMPANY_NAME] has minimal online presence, no verifiable business operations.\n\nWHAT\nThe account processes significant wire transfer volume despite no employees or physical operations.\n\nWHEN\nSignificant activity began immediately after account opening.\n\nWHERE\nCounterparties located in offshore financial centers. Registered address is a virtual office.\n\nWHY SUSPICIOUS\nLack of operations, virtual office, and offshore jurisdictions are characteristic of shell companies.\n\nHOW\nThe entity exists primarily to facilitate financial transactions while obscuring true parties.\n\nCONCLUSION\nThe red flags indicate the entity may be a shell company engaged in suspicious activity.",
+        "key_elements": ["shell company", "no business operations", "virtual office", "offshore"]
+    },
+    {
+        "typology": "smurfing",
+        "narrative": "INTRODUCTION\nThis report documents suspected smurfing activity involving coordinated deposits by multiple individuals.\n\nWHO\n[PRIMARY_INDIVIDUAL] is linked to multiple individuals making coordinated deposits.\n\nWHAT\nThe network made deposits below reporting thresholds at multiple branches.\n\nWHEN\nCoordinated activity with multiple individuals depositing on the same day.\n\nWHERE\nDeposits spread across multiple branches to avoid pattern detection.\n\nWHY SUSPICIOUS\nCoordinated timing, structured amounts, and geographic distribution are hallmarks of smurfing.\n\nHOW\nThe network breaks down larger amounts using multiple individuals across locations.\n\nCONCLUSION\nThe coordination indicates organized smurfing for suspected money laundering.",
+        "key_elements": ["smurfing", "multiple depositors", "coordinated timing", "network"]
+    },
+    {
+        "typology": "funnel_account",
+        "narrative": "INTRODUCTION\nThis SAR documents a suspected funnel account where funds from multiple sources are concentrated and redistributed.\n\nWHO\n[ACCOUNT_HOLDER] receives transfers from numerous sources and distributes to few beneficiaries.\n\nWHAT\nMultiple accounts transfer to primary account, which consolidates and redistributes funds.\n\nWHEN\nPredictable cycle: collection phase followed by distribution phase.\n\nWHERE\nSource accounts distributed across multiple locations.\n\nWHY SUSPICIOUS\nSystematic collection and redistribution is characteristic of funnel account schemes.\n\nHOW\nThe account aggregates funds to obscure origin before redistribution.\n\nCONCLUSION\nThe funnel pattern indicates suspected money laundering requiring investigation.",
+        "key_elements": ["funnel account", "multiple sources", "coordinated pattern", "layering"]
+    },
+    {
+        "typology": "third_party_payments",
+        "narrative": "INTRODUCTION\nThis SAR documents unusual third-party payment patterns lacking clear business purpose.\n\nWHO\n[CUSTOMER_NAME] with stated employment income inconsistent with transaction volumes.\n\nWHAT\nPayments to unrelated third parties with offsetting deposits from different third parties.\n\nWHEN\nPattern emerged and continued with coordinated timing.\n\nWHERE\nRecipients across multiple states and countries.\n\nWHY SUSPICIOUS\nLack of relationship between account holder and recipients suggests intermediary role.\n\nHOW\nPossible money mule operation receiving and redistributing funds.\n\nCONCLUSION\nThird-party patterns indicate potential money laundering activity.",
+        "key_elements": ["third-party payments", "no clear relationship", "money mule", "offsetting"]
+    },
+    {
+        "typology": "cash_intensive",
+        "narrative": "INTRODUCTION\nThis SAR concerns a cash-intensive business with deposits inconsistent with industry benchmarks.\n\nWHO\n[BUSINESS_NAME] operated as [BUSINESS_TYPE] with deposits significantly exceeding industry norms.\n\nWHAT\nCash deposits averaging far above what industry benchmarks would suggest.\n\nWHEN\nElevated cash pattern has been consistent over the review period.\n\nWHERE\nAll deposits at local branch. Business size does not support reported volumes.\n\nWHY SUSPICIOUS\nCash volumes significantly exceed expected levels for this business type.\n\nHOW\nBusiness may be used as front to launder illicit cash through apparent business deposits.\n\nCONCLUSION\nInconsistency between indicators and cash volumes raises money laundering concerns.",
+        "key_elements": ["cash-intensive", "exceeds industry norms", "business front", "commingling"]
+    },
+    {
+        "typology": "layering",
+        "narrative": "INTRODUCTION\nThis SAR documents complex transfer chains designed to obscure fund origins.\n\nWHO\n[CUSTOMER_NAME] involved in multi-hop transfer chains across jurisdictions.\n\nWHAT\nLarge deposits followed by series of transfers through multiple accounts and countries.\n\nWHEN\nMultiple layering chains executed over the review period.\n\nWHERE\nTransfers span multiple jurisdictions including high-risk countries.\n\nWHY SUSPICIOUS\nComplex multi-hop transfers designed to create distance from original source.\n\nHOW\nFunds moved through multiple intermediary points to obscure the audit trail.\n\nCONCLUSION\nThe layering pattern indicates sophisticated money laundering activity.",
+        "key_elements": ["layering", "multi-hop", "complex transfers", "multiple jurisdictions"]
+    },
+    {
+        "typology": "round_tripping",
+        "narrative": "INTRODUCTION\nThis SAR documents suspected round-tripping where funds leave and return via complex routes.\n\nWHO\n[CUSTOMER_NAME] involved in cyclical fund flows through offshore entities.\n\nWHAT\nLarge outgoing wires followed by return of funds as apparent investment income.\n\nWHEN\nMultiple round-trip cycles executed over several months.\n\nWHERE\nFunds routed through offshore financial centers before returning.\n\nWHY SUSPICIOUS\nCyclical flow through offshore entities with slight markup suggests round-tripping.\n\nHOW\nFunds sent overseas and returned as legitimate-appearing investment returns.\n\nCONCLUSION\nThe round-tripping pattern indicates suspected money laundering.",
+        "key_elements": ["round-tripping", "offshore", "cyclical flows", "investment returns"]
+    }
+]
+
+
+def save_templates(filepath=None):
+    """Save SAR templates to JSON."""
+    if filepath is None:
+        filepath = os.path.join(DATA_DIR, 'sar_templates.json')
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, 'w') as f:
+        json.dump(SAR_TEMPLATES, f, indent=2)
+    print(f"[OK] Saved {len(SAR_TEMPLATES)} SAR templates")
+    return filepath
+
+
+def create_vector_store(templates=None, persist_dir=CHROMA_DIR):
+    """Create ChromaDB vector store with SAR templates."""
+    from langchain_community.vectorstores import Chroma
+    from langchain_ollama import OllamaEmbeddings
+
+    if templates is None:
+        templates = SAR_TEMPLATES
+
+    print("Creating vector store...")
+    embeddings = OllamaEmbeddings(model="nomic-embed-text")
+
+    documents = [t['narrative'] for t in templates]
+    metadatas = [{
+        'typology': t['typology'],
+        'template_id': str(i),
+        'key_elements': ', '.join(t['key_elements'])
+    } for i, t in enumerate(templates)]
+
+    vectorstore = Chroma.from_texts(
+        texts=documents,
+        embedding=embeddings,
+        metadatas=metadatas,
+        persist_directory=persist_dir
+    )
+
+    print(f"[OK] Vector store created with {len(documents)} templates")
+    return vectorstore
+
+
+def load_vector_store(persist_dir=CHROMA_DIR):
+    """Load existing vector store."""
+    from langchain_community.vectorstores import Chroma
+    from langchain_ollama import OllamaEmbeddings
+
+    embeddings = OllamaEmbeddings(model="nomic-embed-text")
+    return Chroma(persist_directory=persist_dir, embedding_function=embeddings)
+
+
+def setup():
+    """Full RAG setup: save templates and create vector store."""
+    save_templates()
+    vectorstore = create_vector_store()
+    return vectorstore

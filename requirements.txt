@@ -1,0 +1,32 @@
+# ASTRAS - SAR Narrative Generator with Audit Trail
+# Core
+pandas>=2.0
+numpy>=1.24
+scipy>=1.10
+
+# ML & Explainability
+xgboost>=2.0
+scikit-learn>=1.3
+shap>=0.42
+
+# Graph Analysis
+networkx>=3.1
+
+# LLM & RAG
+langchain>=0.2
+langchain-community>=0.2
+langchain-ollama>=0.1
+chromadb>=0.4
+
+# Web Framework
+streamlit>=1.30
+fastapi>=0.100
+uvicorn>=0.20
+
+# Data Generation
+faker>=20.0
+
+# Utilities
+joblib>=1.3
+plotly>=5.18
+pydantic>=2.0
