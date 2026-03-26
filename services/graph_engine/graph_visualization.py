@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import networkx as nx
 import plotly.graph_objects as go
-from services.graph_engine import build_transaction_graph
+from services.graph_engine.graph_core import build_transaction_graph
 
 
 def create_customer_graph_figure(customer_id, transactions_df, max_nodes=30):

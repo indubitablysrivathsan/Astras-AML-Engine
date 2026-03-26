@@ -10,9 +10,9 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from services.behavioral_signals import compute_all_signals
-from services.graph_engine import build_transaction_graph, compute_graph_signals
-from services.bsi import compute_bsi
+from services.behavioral_engine.behavioral_signals import compute_all_signals
+from services.graph_engine.graph_core import build_transaction_graph, compute_graph_signals
+from services.behavioral_engine.bsi import compute_bsi
 
 
 def compute_bsi_timeline(customer_id, transactions_df, window_days=60, step_days=30):

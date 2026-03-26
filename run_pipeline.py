@@ -44,7 +44,7 @@ def run_full_pipeline():
     print("\n" + "=" * 70)
     print("PHASE 3: NetworkX Graph Analysis")
     print("=" * 70)
-    from services.graph_engine.graph_engine import compute_graph_signals_for_all
+    from services.graph_engine.graph_core import compute_graph_signals_for_all
     graph_df = compute_graph_signals_for_all(customers_df, transactions_df)
     graph_df.to_csv('graph_signals.csv', index=False)
     print(f"  Graph signals: {len(graph_df.columns) - 1} features for {len(graph_df)} customers")
@@ -97,7 +97,7 @@ def run_full_pipeline():
     print("=" * 70)
 
     print("\nNext steps:")
-    print("  1. Set up RAG vector store: python -c \"from services.rag_service import setup; setup()\"")
+    print("  1. Set up RAG vector store: python -c \"from services.sar.rag_service import setup; setup()\"")
     print("  2. Launch dashboard:        streamlit run app.py")
     print("  3. Launch API:              uvicorn api:app --reload")
 
@@ -112,3 +112,4 @@ def run_full_pipeline():
 
 if __name__ == "__main__":
     run_full_pipeline()
+

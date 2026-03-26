@@ -252,7 +252,7 @@ elif page == "Behavioral Intelligence":
             with timeline_col:
                 st.markdown("**BSI Timeline** (behavioral regime changes)")
                 try:
-                    from services.bsi_timeline import compute_bsi_timeline
+                    from services.behavioral_engine.bsi_timeline import compute_bsi_timeline
                     timeline_df = compute_bsi_timeline(cid, transactions_df)
                     if len(timeline_df) > 1:
                         fig = go.Figure()
@@ -280,7 +280,7 @@ elif page == "Behavioral Intelligence":
     st.markdown("---")
     st.subheader("Transaction Network Graph")
     try:
-        from services.graph_visualization import create_customer_graph_figure
+        from services.graph_engine.graph_visualization import create_customer_graph_figure
         graph_fig = create_customer_graph_figure(cid, transactions_df)
         if graph_fig:
             st.plotly_chart(graph_fig, use_container_width=True)
@@ -385,7 +385,7 @@ elif page == "Generate SAR":
                             f"${ar['total_amount']:,.2f}")
 
     # Check LLM availability
-    from services.sar_fallback import is_ollama_available
+    from services.sar.sar_fallback import is_ollama_available
     ollama_up = is_ollama_available()
     if not ollama_up:
         st.info("Ollama not detected. SAR will be generated using template-based fallback mode. "
@@ -394,9 +394,9 @@ elif page == "Generate SAR":
     if st.button("Generate SAR Narrative", type="primary"):
         with st.spinner("Generating SAR narrative with behavioral intelligence..."):
             try:
-                from services.sar_generator import load_alert_data, save_sar
-                from services.compliance import validate_sar
-                from services.audit import create_audit_tables, save_sar_record
+                from services.sar.sar_generator import load_alert_data, save_sar
+                from services.sar.compliance import validate_sar
+                from services.sar.audit import create_audit_tables, save_sar_record
 
                 create_audit_tables()
                 alert, customer, txns = load_alert_data(alert_id)
@@ -408,7 +408,7 @@ elif page == "Generate SAR":
                 ic4.metric("Transactions", f"{alert['num_transactions']}")
 
                 # Get SHAP drivers
-                from services.sar_generator import get_shap_drivers
+                from services.sar.sar_generator import get_shap_drivers
                 top_drivers, risk_score = get_shap_drivers(alert, features_df, explainer, feature_cols)
 
                 # BSI data
@@ -422,7 +422,7 @@ elif page == "Generate SAR":
                     # Full LLM generation
                     from langchain_community.vectorstores import Chroma
                     from langchain_ollama import OllamaEmbeddings, OllamaLLM
-                    from services.sar_generator import generate_narrative
+                    from services.sar.sar_generator import generate_narrative
 
                     embeddings = OllamaEmbeddings(model="nomic-embed-text")
                     vectorstore = Chroma(persist_directory=CHROMA_DIR, embedding_function=embeddings)
@@ -433,7 +433,7 @@ elif page == "Generate SAR":
                     )
                 else:
                     # Fallback: template-based generation
-                    from services.sar_fallback import generate_fallback_narrative
+                    from services.sar.sar_fallback import generate_fallback_narrative
                     from datetime import datetime
 
                     narrative = generate_fallback_narrative(
@@ -546,7 +546,7 @@ elif page == "Counterfactual Analysis":
     cid = alert_row['customer_id']
 
     if st.button("Run Counterfactual Analysis", type="primary"):
-        from services.counterfactual import generate_counterfactual
+        from services.sar.counterfactual import generate_counterfactual
 
         model = joblib.load(os.path.join(MODELS_DIR, 'risk_classifier.pkl'))
         cf = generate_counterfactual(cid, features_df, model, feature_cols)

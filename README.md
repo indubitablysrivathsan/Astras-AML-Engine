@@ -42,20 +42,28 @@ app.py                     # Streamlit dashboard (5 pages)
 api.py                     # FastAPI REST endpoints
 
 services/
-  data_generator.py        # Synthetic AML data with gray-area customers
-  behavioral_signals.py    # 19 entropy/burst/counterparty/amount signals
-  graph_engine.py          # NetworkX: circular flows, funnel hubs, layering
-  graph_visualization.py   # NetworkX → Plotly interactive network diagrams
-  bsi.py                   # Behavioral Stability Index (0-100)
-  bsi_timeline.py          # Rolling-window BSI time series
-  adaptive_monitor.py      # Dynamic monitoring levels based on BSI
-  risk_scorer.py           # XGBoost over 70 features + SHAP
-  counterfactual.py        # "What-if" sensitivity analysis
-  rag_service.py           # ChromaDB + Ollama embeddings for SAR retrieval
-  sar_generator.py         # Mistral 7B narrative generation via Ollama
-  sar_fallback.py          # Template-based SAR when Ollama unavailable
-  compliance.py            # Automated compliance checklist
-  audit.py                 # SQLite audit trail + data lineage
+
+  data_generation/
+    data_generator.py        # Synthetic AML data with gray-area customers
+
+  behavioral_engine/
+    bsi.py                   # Behavioral Stability Index (0-100)
+    bsi_timeline.py          # Rolling-window BSI time series
+    adaptive_monitor.py      # Dynamic monitoring levels based on BSI
+    behavioral_signals.py    # 19 entropy/burst/counterparty/amount signals
+    risk_scorer.py           # XGBoost over 70 features + SHAP
+
+  graph_engine/
+    graph_engine.py          # NetworkX: circular flows, funnel hubs, layering
+    graph_visualization.py   # NetworkX → Plotly interactive network diagrams
+    
+  sar/
+    counterfactual.py        # "What-if" sensitivity analysis
+    rag_service.py           # ChromaDB + Ollama embeddings for SAR retrieval
+    sar_generator.py         # Mistral 7B narrative generation via Ollama
+    sar_fallback.py          # Template-based SAR when Ollama unavailable
+    compliance.py            # Automated compliance checklist
+    audit.py                 # SQLite audit trail + data lineage
 ```
 
 ## Key Features

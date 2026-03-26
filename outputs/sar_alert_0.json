@@ -1,0 +1,75 @@
+{
+  "alert_id": 0,
+  "narrative": "INTRODUCTION\nThis SAR concerns suspicious trade finance activity involving Castillo Inc, a high-risk business entity with an EIN of 84-6731767. The account, which reported an annual income of $75,056.29, has exhibited unusual and inconsistent transaction patterns between January 2nd, 2025, and November 3rd, 2025.\n\nWHO\nCastillo Inc, operating under the occupation/business of re-intermediate visionary synergies, is based at 07783 Yoder Hollow, North Ashleyfurt, OH 18742, South Roberttown, PW 82315. Despite a reported annual income of $75,056.29, the transaction volume suggests potential discrepancies.\n\nWHAT\nThe account has experienced a total of 18 transactions during the specified period, with six international transactions across five countries: China, Vietnam, Nigeria, Turkey, and India. The total deposits amounted to $245,287.82, while withdrawals reached $84,270.09, resulting in a net flow of $161,017.73.\n\nWHEN\nThe suspicious activity occurred between January 2nd, 2025, and November 3rd, 2025, with increasing frequency over time. The majority of the transactions took place after August 2025.\n\nWHERE\nCounterparties for these international transactions are located in high-risk jurisdictions such as China, Vietnam, Nigeria, Turkey, and India.\n\nWHY SUSPICIOUS\nThe behavioral intelligence findings support this suspicion. The Behavioral Stability Index (BSI) is 98.0/100, indicating a stable pattern of activity. However, the Entropy Drift score is 1.000, suggesting a significant change in transaction patterns compared to historical data. Additionally, the account has shown a Counterparty Expansion Rate of 1.70, indicating an increase in the number of unique counterparties involved in transactions. The Funnel Ratio of 18.00 also indicates potential layering in money laundering activities.\n\nHOW\nThe account appears to be used as a conduit for pass-through transactions, with deposits and withdrawals occurring frequently and often without significant retention time. This pattern is consistent with layering in money laundering schemes.\n\nCONCLUSION\nGiven the customer's high-risk rating, the inconsistency between reported income and transaction volume, the involvement of counterparties from high-risk jurisdictions, and the behavioral intelligence findings, there are strong indications of potential trade-based money laundering activities. This SAR is being filed to alert relevant authorities for further investigation.",
+  "audit_trail": {
+    "alert_id": 0,
+    "generation_timestamp": "2026-03-26T21:06:20.219699",
+    "model": "mistral:7b",
+    "temperature": 0.1,
+    "customer_id": 10,
+    "customer_name": "Castillo Inc",
+    "num_transactions_analyzed": 18,
+    "transaction_date_range": "2025-01-02 00:00:00 to 2025-11-03 00:00:00",
+    "risk_score": 0.99207777,
+    "typology_detected": "trade_based",
+    "shap_top_features": [
+      {
+        "feature": "deposit_withdrawal_ratio",
+        "shap_value": 3.7181317806243896
+      },
+      {
+        "feature": "num_withdrawals",
+        "shap_value": 1.4026211500167847
+      },
+      {
+        "feature": "total_volume",
+        "shap_value": 0.9532596468925476
+      },
+      {
+        "feature": "num_unique_counterparties",
+        "shap_value": 0.38837945461273193
+      },
+      {
+        "feature": "total_withdrawals",
+        "shap_value": 0.3481975793838501
+      }
+    ],
+    "templates_retrieved": [
+      {
+        "typology": "trade_based",
+        "template_id": "2"
+      },
+      {
+        "typology": "rapid_movement",
+        "template_id": "1"
+      }
+    ],
+    "generation_params": {
+      "temperature": 0.1,
+      "max_tokens": 2000
+    },
+    "narrative": "INTRODUCTION\nThis SAR concerns suspicious trade finance activity involving Castillo Inc, a high-risk business entity with an EIN of 84-6731767. The account, which reported an annual income of $75,056.29, has exhibited unusual and inconsistent transaction patterns between January 2nd, 2025, and November 3rd, 2025.\n\nWHO\nCastillo Inc, operating under the occupation/business of re-intermediate visionary synergies, is based at 07783 Yoder Hollow, North Ashleyfurt, OH 18742, South Roberttown, PW 82315. Despite a reported annual income of $75,056.29, the transaction volume suggests potential discrepancies.\n\nWHAT\nThe account has experienced a total of 18 transactions during the specified period, with six international transactions across five countries: China, Vietnam, Nigeria, Turkey, and India. The total deposits amounted to $245,287.82, while withdrawals reached $84,270.09, resulting in a net flow of $161,017.73.\n\nWHEN\nThe suspicious activity occurred between January 2nd, 2025, and November 3rd, 2025, with increasing frequency over time. The majority of the transactions took place after August 2025.\n\nWHERE\nCounterparties for these international transactions are located in high-risk jurisdictions such as China, Vietnam, Nigeria, Turkey, and India.\n\nWHY SUSPICIOUS\nThe behavioral intelligence findings support this suspicion. The Behavioral Stability Index (BSI) is 98.0/100, indicating a stable pattern of activity. However, the Entropy Drift score is 1.000, suggesting a significant change in transaction patterns compared to historical data. Additionally, the account has shown a Counterparty Expansion Rate of 1.70, indicating an increase in the number of unique counterparties involved in transactions. The Funnel Ratio of 18.00 also indicates potential layering in money laundering activities.\n\nHOW\nThe account appears to be used as a conduit for pass-through transactions, with deposits and withdrawals occurring frequently and often without significant retention time. This pattern is consistent with layering in money laundering schemes.\n\nCONCLUSION\nGiven the customer's high-risk rating, the inconsistency between reported income and transaction volume, the involvement of counterparties from high-risk jurisdictions, and the behavioral intelligence findings, there are strong indications of potential trade-based money laundering activities. This SAR is being filed to alert relevant authorities for further investigation.",
+    "narrative_word_count": 332,
+    "status": "draft",
+    "reviewed_by": null,
+    "approved_by": null,
+    "filed_date": null,
+    "bsi_score": 98.0,
+    "drift_level": "stable"
+  },
+  "compliance_check": {
+    "compliant": false,
+    "has_all_sections": true,
+    "sections_found": 8,
+    "sections_total": 8,
+    "missing_sections": [],
+    "word_count": 332,
+    "word_count_ok": true,
+    "has_specific_amounts": true,
+    "has_specific_dates": false,
+    "has_behavioral_reference": true,
+    "has_counterparty_info": true,
+    "has_risk_score": true
+  },
+  "generated_at": "2026-03-26T21:06:20.247989"
+}
