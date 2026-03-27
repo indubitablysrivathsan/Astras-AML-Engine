@@ -54,7 +54,7 @@ services/
     risk_scorer.py           # XGBoost over 70 features + SHAP
 
   graph_engine/
-    graph_engine.py          # NetworkX: circular flows, funnel hubs, layering
+    graph_core.py            # NetworkX: circular flows, funnel hubs, layering
     graph_visualization.py   # NetworkX → Plotly interactive network diagrams
     
   sar/
