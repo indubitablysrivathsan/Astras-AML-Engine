@@ -134,8 +134,12 @@ def build_transaction_graph(transactions_df: pd.DataFrame) -> nx.DiGraph:
 # 2.  GPU helper
 # ===================================================================
 
-def _nx_to_cugraph(G: nx.DiGraph):
-    """Convert NetworkX DiGraph → cugraph directed Graph."""
+def _nx_to_cugraph(G: nx.DiGraph, store_transposed: bool = False):
+    """Convert NetworkX DiGraph → cugraph directed Graph.
+
+    store_transposed=True  → PageRank (optimal)
+    store_transposed=False → Betweenness centrality (required)
+    """
     if not GPU_AVAILABLE:
         return None
     edges = nx.to_pandas_edgelist(G)
@@ -150,7 +154,7 @@ def _nx_to_cugraph(G: nx.DiGraph):
     )
     G_cu = cugraph.Graph(directed=True)
     G_cu.from_cudf_edgelist(cu_edges, source="src", destination="dst", edge_attr="weight",
-                            store_transposed=True)
+                            store_transposed=store_transposed)
     return G_cu
 
 
@@ -186,7 +190,9 @@ class GraphAnalyzer:
             self.n_jobs = multiprocessing.cpu_count()
 
         self.risk_labels = self._resolve_risk_labels(risk_labels, customers_df)
-        self.G_cu = _nx_to_cugraph(G) if GPU_AVAILABLE else None
+        # Two graph objects: PageRank needs store_transposed=True, BC needs store_transposed=False
+        self.G_cu    = _nx_to_cugraph(G, store_transposed=True)  if GPU_AVAILABLE else None
+        self.G_cu_bc = _nx_to_cugraph(G, store_transposed=False) if GPU_AVAILABLE else None
 
         # Heavy one-time work
         self._precompute_centrality()
@@ -249,22 +255,21 @@ class GraphAnalyzer:
             self._centrality_cpu()
 
     def _centrality_gpu(self):
+        # PageRank — store_transposed=True graph
         pr = cugraph.pagerank(self.G_cu)
         self.pagerank = dict(zip(pr["vertex"].to_pandas().astype(str), pr["pagerank"].to_pandas()))
 
+        # Approximate betweenness centrality — store_transposed=False graph, k pivots to avoid OOM
+        sample_k = GRAPH_CONFIG.get("centrality_sample_size", 500)
         try:
-            bc = cugraph.betweenness_centrality(self.G_cu)
+            bc = cugraph.betweenness_centrality(self.G_cu_bc, k=sample_k)
             self.betweenness = dict(
                 zip(bc["vertex"].to_pandas().astype(str), bc["betweenness_centrality"].to_pandas())
             )
+            print(f"  [graph] Betweenness centrality: GPU approx (k={sample_k})")
         except (RuntimeError, MemoryError) as e:
-            print(f"  [graph] GPU OOM for betweenness centrality ({e}), falling back to CPU sampling …")
-            sample_k = GRAPH_CONFIG.get("centrality_sample_size", 500)
-            n = self.G.number_of_nodes()
-            if sample_k and n > sample_k:
-                self.betweenness = nx.betweenness_centrality(self.G, k=sample_k, weight="weight")
-            else:
-                self.betweenness = nx.betweenness_centrality(self.G, weight="weight")
+            print(f"  [graph] GPU BC failed ({e}), falling back to CPU sampling (k={sample_k}) …")
+            self.betweenness = nx.betweenness_centrality(self.G, k=sample_k, weight="weight")
 
         # HITS — no cugraph impl; fall back to NetworkX
         self._hits_nx()
