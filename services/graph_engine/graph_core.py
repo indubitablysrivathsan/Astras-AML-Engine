@@ -222,9 +222,16 @@ def compute_graph_signals(customer_id, transactions_df, G=None,pagerank=None):
 
 def compute_pagerank_score(G, customer_id, pagerank_dict):
     node = str(customer_id)
-    return {
-        'pagerank_score': float(pagerank_dict.get(node, 0.0))
-    }
+
+    if pagerank_dict is None:
+        return {'pagerank_score': 0.0}
+
+    score = pagerank_dict.get(node)
+
+    if score is None or np.isnan(score):
+        return {'pagerank_score': 0.0}
+
+    return {'pagerank_score': float(score)}
 
 
 def compute_graph_signals_for_all(customers_df, transactions_df, G=None, pagerank=None):
@@ -233,6 +240,12 @@ def compute_graph_signals_for_all(customers_df, transactions_df, G=None, pageran
 
     # Build global graph
     G = build_transaction_graph(transactions_df)
+    print(f"  Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+
+    for cid in customers_df['customer_id']:
+        if str(cid) not in G:
+            G.add_node(str(cid))
+
     print(f"  Graph: {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
 
     pagerank = nx.pagerank(G, weight='weight')
