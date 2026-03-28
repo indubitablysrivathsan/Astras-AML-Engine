@@ -46,7 +46,7 @@ def load_all_data():
     alerts = pd.read_sql('SELECT * FROM alerts', conn)
     conn.close()
 
-    features_df = pd.read_csv(os.path.join(os.path.dirname(MODELS_DIR), 'alert_features_scored.csv'))
+    features_df = pd.read_csv('alert_features_scored.csv')
     explainer = joblib.load(os.path.join(MODELS_DIR, 'shap_explainer.pkl'))
     feature_cols = joblib.load(os.path.join(MODELS_DIR, 'feature_columns.pkl'))
 
@@ -549,11 +549,17 @@ elif page == "Counterfactual Analysis":
         from services.sar.counterfactual import generate_counterfactual
 
         model = joblib.load(os.path.join(MODELS_DIR, 'risk_classifier.pkl'))
-        cf = generate_counterfactual(cid, features_df, model, feature_cols)
+        cf_res = generate_counterfactual(cid, features_df, model, feature_cols)
+        st.session_state.cf_data = cf_res
+        st.session_state.cf_run_alert_id = alert_id
+        st.session_state.cf_none_flag = (cf_res is None)
 
-        if cf is None:
-            st.error("No data available")
-        else:
+    cf_run_now = (st.session_state.get("cf_run_alert_id") == alert_id)
+    if cf_run_now and st.session_state.get("cf_none_flag"):
+        st.error("No data available")
+    elif cf_run_now and st.session_state.get("cf_data") is not None:
+        cf = st.session_state.cf_data
+        if True:
             # Summary metrics
             sc1, sc2, sc3 = st.columns(3)
             sc1.metric("Current Risk", f"{cf['current_risk_score']:.1%}")
@@ -610,6 +616,198 @@ elif page == "Counterfactual Analysis":
             st.markdown("---")
             st.info(f"**Top risk drivers:** {', '.join(cf['summary']['top_risk_dimensions'])} — "
                     f"these explain {cf['summary']['top_2_contribution_pct']:.0f}% of the total risk.")
+
+            # ======================================================================
+            # FLOATING ASSISTANT CHATBOT (Only rendered when CF is run)
+            # ======================================================================
+            if "chat_history" not in st.session_state:
+                st.session_state.chat_history = []
+            if "last_cf_context_alert" not in st.session_state:
+                st.session_state.last_cf_context_alert = None
+            
+            if st.session_state.last_cf_context_alert != alert_id:
+                st.session_state.chat_history = []
+                st.session_state.last_cf_context_alert = alert_id
+
+            st.markdown("""
+            <style>
+                /* Chatbot Trigger Button Container - Break out of layout */
+                div.stElementContainer:has([data-testid="stPopover"]), div:has(> [data-testid="stPopover"]) {
+                    position: fixed !important;
+                    bottom: 30px !important;
+                    right: 30px !important;
+                    z-index: 999999 !important;
+                    width: auto !important;
+                }
+
+                [data-testid="stPopover"] {
+                    position: relative;
+                }
+                
+                [data-testid="stPopover"] > button {
+                    background-color: transparent !important;
+                    color: white !important;
+                    border-radius: 0 !important;
+                    width: auto !important;
+                    height: auto !important;
+                    padding: 0 !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    font-size: 40px !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    transition: transform 0.2s ease !important;
+                    outline: none !important;
+                }
+                
+                /* Hide the default Streamlit popover chevron caret */
+                [data-testid="stPopover"] > button svg {
+                    display: none !important;
+                }
+                
+                [data-testid="stPopover"] > button:hover {
+                    transform: scale(1.15) !important;
+                    background-color: transparent !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    color: #60a5fa !important;
+                }
+
+                /* Popover Body / Chat Widget Container */
+                [data-testid="stPopoverBody"] {
+                    width: 380px !important;
+                    max-height: 70vh !important;
+                    height: auto !important;
+                    border-radius: 16px !important;
+                    padding: 0 !important;
+                    background-color: #0f172a !important; /* Base app dark background */
+                    border: 1px solid #1e293b !important;
+                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4) !important;
+                    overflow-x: hidden !important;
+                    overflow-y: auto !important;
+                }
+
+                /* Chat Bubbles - Base Style */
+                [data-testid="stChatMessage"] {
+                    background-color: #1e293b !important;
+                    border-radius: 12px !important;
+                    padding: 12px 15px !important;
+                    margin: 10px 15px !important;
+                    border: 1px solid #334155 !important;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+                }
+
+                /* Distinct User Bubble style */
+                [data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
+                    background-color: #2563eb !important;
+                    border-color: #1d4ed8 !important;
+                    border-bottom-right-radius: 4px !important;
+                }
+
+                /* Distinct Assistant Bubble style */
+                [data-testid="stChatMessage"]:not(:has([data-testid="chatAvatarIcon-user"])) {
+                    border-bottom-left-radius: 4px !important;
+                }
+
+                /* Chat Input Field Styling */
+                [data-testid="stChatInput"] {
+                    position: sticky !important;
+                    bottom: 0 !important;
+                    z-index: 1000 !important;
+                    background-color: #0f172a !important;
+                    padding: 15px !important;
+                    border-top: 1px solid #1e293b !important;
+                    margin: 0 !important;
+                }
+                
+                [data-testid="stChatInput"] textarea {
+                    background-color: #1e293b !important;
+                    border-radius: 20px !important;
+                    padding-left: 15px !important;
+                    color: #f8fafc !important;
+                }
+                /* Remove native borders from Streamlit inner scroll container to blend nicely */
+                [data-testid="stPopoverBody"] [data-testid="stVerticalBlockBorderWrapper"] {
+                    border: none !important;
+                }
+            </style>
+            """, unsafe_allow_html=True)
+
+            with st.popover("💬", use_container_width=False):
+                # Widget custom header mimicking the reference design
+                st.markdown(f"""
+                <div style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); 
+                            padding: 20px; 
+                            margin: -1rem -1rem 10px -1rem; 
+                            border-radius: 16px 16px 0 0;
+                            display: flex; 
+                            align-items: center; 
+                            gap: 12px; 
+                            box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
+                    <div style="background-color: rgba(255,255,255,0.2); 
+                                width: 45px; height: 45px; 
+                                border-radius: 50%; 
+                                display: flex; align-items: center; justify-content: center; 
+                                font-size: 24px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                        🛡️
+                    </div>
+                    <div style="color: white; line-height: 1.4;">
+                        <div style="font-weight: 600; font-size: 16px;">SAR Assistant</div>
+                        <div style="font-size: 13px; opacity: 0.9;">Analyzing Alert ID: {alert_id}</div>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                for msg in st.session_state.chat_history:
+                    with st.chat_message(msg["role"]):
+                        st.markdown(msg["content"])
+
+                if query := st.chat_input("Ask about this counterfactual outcome..."):
+                    st.session_state.chat_history.append({"role": "user", "content": query})
+                    
+                    with st.chat_message("user"):
+                        st.markdown(query)
+
+                    # Build context
+                    context_str = f"You are a helpful AML assistant. Context for Alert ID: {alert_id}\n\n"
+                    context_str += "--- INTRINSIC COUNTERFACTUAL DATA ---\n"
+                    for dim in cf.get('dimension_impacts', []):
+                        context_str += f"- {dim['dimension']}: explains {dim['contribution_pct']:.1f}% of risk (Reduces risk by {dim['risk_reduction']:.1%} if normalized)\n"
+                    
+                    try:
+                        sar_file = os.path.join(OUTPUTS_DIR, f"sar_alert_{alert_id}.json")
+                        if os.path.exists(sar_file):
+                            with open(sar_file, "r") as f:
+                                sar_doc = json.load(f)
+                            context_str += f"\n--- GENERATED SAR NARRATIVE ---\n{sar_doc.get('narrative', '')}\n"
+                    except:
+                        pass
+                    
+                    with st.chat_message("assistant"):
+                        with st.spinner("Analyzing..."):
+                                try:
+                                    from langchain_ollama import OllamaLLM
+                                    from langchain_core.prompts import PromptTemplate
+                                    
+                                    llm = OllamaLLM(model=LLM_MODEL, temperature=0.1, num_predict=1000)
+                                    history_str = "\\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.chat_history[-4:]])
+                                    prompt_text = ("{system_cmd}\\n\\nRecent Chat:\\n{history}\\n\\nUser Question: {query}\\nAnswer:")
+                                    prompt = PromptTemplate.from_template(prompt_text)
+                                    chain = prompt | llm
+                                    
+                                    response = chain.invoke({
+                                        "system_cmd": context_str, 
+                                        "history": history_str,
+                                        "query": query
+                                    })
+                                    
+                                    st.markdown(response)
+                                    st.session_state.chat_history.append({"role": "assistant", "content": response})
+                                except Exception as e:
+                                    error_msg = f"Error querying local Mistral LLM (Ollama). Is it running? Details: {str(e)}"
+                                    st.error(error_msg)
+                                    st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -705,3 +903,4 @@ elif page == "Audit Trail Viewer":
 
             with st.expander("Raw Audit Trail JSON"):
                 st.json({k: v for k, v in audit.items() if k != 'narrative'})
+

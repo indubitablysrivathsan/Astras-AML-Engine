@@ -134,7 +134,7 @@ def train_meta_classifier(features_df):
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    model = xgb.XGBClassifier(**XGBOOST_PARAMS, use_label_encoder=False)
+    model = xgb.XGBClassifier(**XGBOOST_PARAMS)
     model.fit(X_train, y_train)
 
     y_pred = model.predict(X_test)

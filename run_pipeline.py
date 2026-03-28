@@ -25,7 +25,7 @@ def run_full_pipeline():
     # from services.data_generation.data_generator import run as generate_data
     # customers_df, transactions_df, alerts_df = generate_data()
 
-    # If data is already generated 
+    # # If data is already generated 
 
     customers_df = pd.read_csv("data/generated/customers.csv")
     transactions_df = pd.read_csv("data/generated/transactions.csv")
@@ -40,9 +40,8 @@ def run_full_pipeline():
     # behavioral_df.to_csv('behavioral_signals.csv', index=False)
     # print(f"  Behavioral signals: {len(behavioral_df.columns) - 1} features for {len(behavioral_df)} customers")
 
-    # If data is already generated 
-
-    behavioral_df = pd.read_csv("behavioral_signals.csv")
+    # If data is already generated
+    behavioral_df = pd.read_csv('behavioral_signals.csv')
 
     # # Phase 3: Graph Analysis
     # print("\n" + "=" * 70)
@@ -53,24 +52,26 @@ def run_full_pipeline():
     # graph_df.to_csv('graph_signals.csv', index=False)
     # print(f"  Graph signals: {len(graph_df.columns) - 1} features for {len(graph_df)} customers")
 
-    graph_df = pd.read_csv("graph_signals.csv")
+    graph_df = pd.read_csv('graph_signals.csv')
+    # # Phase 4: BSI Computation
+    # print("\n" + "=" * 70)
+    # print("PHASE 4: Behavioral Stability Index (BSI)")
+    # print("=" * 70)
+    # from services.behavioral_engine.bsi import compute_bsi_for_all
+    # bsi_df = compute_bsi_for_all(behavioral_df, graph_df)
+    # bsi_df.to_csv('bsi_scores.csv', index=False)
 
-    # Phase 4: BSI Computation
-    print("\n" + "=" * 70)
-    print("PHASE 4: Behavioral Stability Index (BSI)")
-    print("=" * 70)
-    from services.behavioral_engine.bsi import compute_bsi_for_all
-    bsi_df = compute_bsi_for_all(behavioral_df, graph_df)
-    bsi_df.to_csv('bsi_scores.csv', index=False)
+    bsi_df = pd.read_csv('bsi_scores.csv')
+    # # Phase 5: Adaptive Monitoring
+    # print("\n" + "=" * 70)
+    # print("PHASE 5: Adaptive Monitoring System")
+    # print("=" * 70)
+    # from services.behavioral_engine.adaptive_monitor import compute_monitoring_states
+    # monitor_df = compute_monitoring_states(bsi_df)
+    # monitor_df.to_csv('monitoring_states.csv', index=False)
 
-    # Phase 5: Adaptive Monitoring
-    print("\n" + "=" * 70)
-    print("PHASE 5: Adaptive Monitoring System")
-    print("=" * 70)
-    from services.behavioral_engine.adaptive_monitor import compute_monitoring_states
-    monitor_df = compute_monitoring_states(bsi_df)
-    monitor_df.to_csv('monitoring_states.csv', index=False)
-
+    monitor_df = pd.read_csv('monitoring_states.csv')
+    
     # Phase 6: Risk Scoring (XGBoost Meta-Classifier)
     print("\n" + "=" * 70)
     print("PHASE 6: XGBoost Meta-Risk Classifier")

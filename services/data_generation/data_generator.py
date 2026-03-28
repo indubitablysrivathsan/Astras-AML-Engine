@@ -15,7 +15,8 @@ import random
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from config import (
     NUM_CUSTOMERS, NUM_SUSPICIOUS, SIMULATION_DAYS, START_DATE_STR,
     TYPOLOGIES, DB_PATH, DATA_DIR
