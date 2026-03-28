@@ -639,7 +639,7 @@ elif page == "Investigation":
                         counterfactual=cf_data,
                     )
 
-            llm = OllamaLLM(model=LLM_MODEL, temperature=0.0, num_predict=1000,
+            llm = OllamaLLM(model=LLM_MODEL, temperature=0.0, num_predict=2500,
                             keep_alive=-1, repeat_penalty=1.3)
 
             stream = stream_investigation_response(
