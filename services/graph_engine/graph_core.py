@@ -261,7 +261,10 @@ class GraphAnalyzer:
 
         # Betweenness centrality — cugraph pre-allocates full graph memory regardless of k,
         # causing OOM on large graphs. Use CPU approximate BC with small k instead.
-        sample_k = GRAPH_CONFIG.get("centrality_sample_size") or 300
+        # Cap k at number of nodes to avoid "sample larger than population" on small graphs
+        # (e.g. BSI timeline windows with only a handful of nodes).
+        n = self.G.number_of_nodes()
+        sample_k = min(GRAPH_CONFIG.get("centrality_sample_size") or 300, n) if n > 0 else 1
         print(f"  [graph] Betweenness centrality: CPU approx (k={sample_k})")
         self.betweenness = nx.betweenness_centrality(self.G, k=sample_k, weight="weight")
 
@@ -271,7 +274,8 @@ class GraphAnalyzer:
     def _centrality_cpu(self):
         self.pagerank = nx.pagerank(self.G, weight="weight")
 
-        sample_k = GRAPH_CONFIG.get("centrality_sample_size") or 300
+        n = self.G.number_of_nodes()
+        sample_k = min(GRAPH_CONFIG.get("centrality_sample_size") or 300, n) if n > 0 else 1
         print(f"  [graph] Betweenness centrality: CPU approx (k={sample_k})")
         self.betweenness = nx.betweenness_centrality(self.G, k=sample_k, weight="weight")
 

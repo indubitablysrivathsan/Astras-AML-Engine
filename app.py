@@ -640,7 +640,7 @@ elif page == "Investigation":
                     )
 
             llm = OllamaLLM(model=LLM_MODEL, temperature=0.0, num_predict=1000,
-                            keep_alive=-1)
+                            keep_alive=-1, repeat_penalty=1.3)
 
             stream = stream_investigation_response(
                 llm,
