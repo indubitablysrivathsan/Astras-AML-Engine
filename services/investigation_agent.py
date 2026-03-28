@@ -66,7 +66,7 @@ def _query_customer_txns(customer_id: int, db_path: str,
     return df
 
 
-def _df_to_text(df: pd.DataFrame, max_rows=50) -> str:
+def _df_to_text(df: pd.DataFrame, max_rows=30) -> str:
     if df.empty:
         return "No transactions match the specified filters."
     rows = []
@@ -105,12 +105,13 @@ def _make_tools(alert_id: int, customer_id: int, db_path: str):
         max_amount: float = None,
     ) -> str:
         """
-        Filter this alert's transactions by any combination of:
+        Retrieve transactions for this alert. Call with NO arguments to get ALL transactions.
+        Optionally filter by:
           country   — e.g. "India", "UAE", "Germany"
-          method    — e.g. "wire", "crypto_exchange", "cash", "ach", "card", "check"
+          method    — "wire", "crypto_exchange", "ach", "card", "check", "cash"
           txn_type  — "deposit" or "withdrawal"
           min_amount / max_amount — native currency amount bounds
-        Returns a formatted list of matching transactions.
+        To list ALL transactions: filter_transactions()
         """
         try:
             df = _query_customer_txns(
@@ -408,17 +409,14 @@ def create_investigation_agent(
     Build a LangGraph ReAct agent scoped to a single alert.
     Returns the compiled agent graph.
     """
-    # get_crypto_flow is pre-loaded in the system prompt — exclude it from tools
-    # to prevent the model from hallucinating when it tries to call it
-    all_tools = _make_tools(alert_id, customer_id, db_path)
-    tools = [t for t in all_tools if t.name != 'get_crypto_flow']
+    tools = _make_tools(alert_id, customer_id, db_path)
 
     llm = ChatOllama(
         model          = llm_model,
         temperature    = 0.0,
-        num_predict    = 2000,
+        num_predict    = 1000,   # keep answers focused; prevents runaway generation loops
         keep_alive     = -1,
-        repeat_penalty = 1.3,
+        repeat_penalty = 1.3,   # same as Mistral setting — stops repetition spirals
     )
     agent = create_react_agent(
         llm,
