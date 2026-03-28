@@ -18,53 +18,58 @@ def run_full_pipeline():
     print("  Behavioral Intelligence-Driven AML Detection Pipeline")
     print("=" * 70)
 
-    # # Phase 1: Data Generation
+    # # # Phase 1: Data Generation
     # print("\n" + "=" * 70)
     # print("PHASE 1: Synthetic Data Generation")
     # print("=" * 70)
     # from services.data_generation.data_generator import run as generate_data
     # customers_df, transactions_df, alerts_df = generate_data()
 
-    # If data is already generated 
+    # # If data is already generated 
 
     customers_df = pd.read_csv("data/generated/customers.csv")
     transactions_df = pd.read_csv("data/generated/transactions.csv")
     alerts_df = pd.read_csv("data/generated/alerts.csv")
 
-    # Phase 2: Behavioral Signal Computation
-    print("\n" + "=" * 70)
-    print("PHASE 2: Behavioral Signal Computation")
-    print("=" * 70)
-    from services.behavioral_engine.behavioral_signals import compute_signals_for_all_customers
-    behavioral_df = compute_signals_for_all_customers(customers_df, transactions_df)
-    behavioral_df.to_csv('behavioral_signals.csv', index=False)
-    print(f"  Behavioral signals: {len(behavioral_df.columns) - 1} features for {len(behavioral_df)} customers")
+    # # Phase 2: Behavioral Signal Computation
+    # print("\n" + "=" * 70)
+    # print("PHASE 2: Behavioral Signal Computation")
+    # print("=" * 70)
+    # from services.behavioral_engine.behavioral_signals import compute_signals_for_all_customers
+    # behavioral_df = compute_signals_for_all_customers(customers_df, transactions_df)
+    # behavioral_df.to_csv('behavioral_signals.csv', index=False)
+    # print(f"  Behavioral signals: {len(behavioral_df.columns) - 1} features for {len(behavioral_df)} customers")
 
-    # Phase 3: Graph Analysis
-    print("\n" + "=" * 70)
-    print("PHASE 3: NetworkX Graph Analysis")
-    print("=" * 70)
-    from services.graph_engine.graph_core import compute_graph_signals_for_all
-    graph_df = compute_graph_signals_for_all(customers_df, transactions_df)
-    graph_df.to_csv('graph_signals.csv', index=False)
-    print(f"  Graph signals: {len(graph_df.columns) - 1} features for {len(graph_df)} customers")
+    behavioral_df = pd.read_csv('behavioral_signals.csv')
+    # # Phase 3: Graph Analysis
+    # print("\n" + "=" * 70)
+    # print("PHASE 3: NetworkX Graph Analysis")
+    # print("=" * 70)
+    # from services.graph_engine.graph_core import compute_graph_signals_for_all
+    # graph_df = compute_graph_signals_for_all(customers_df, transactions_df)
+    # graph_df.to_csv('graph_signals.csv', index=False)
+    # print(f"  Graph signals: {len(graph_df.columns) - 1} features for {len(graph_df)} customers")
 
-    # Phase 4: BSI Computation
-    print("\n" + "=" * 70)
-    print("PHASE 4: Behavioral Stability Index (BSI)")
-    print("=" * 70)
-    from services.behavioral_engine.bsi import compute_bsi_for_all
-    bsi_df = compute_bsi_for_all(behavioral_df, graph_df)
-    bsi_df.to_csv('bsi_scores.csv', index=False)
+    graph_df = pd.read_csv('graph_signals.csv')
+    # # Phase 4: BSI Computation
+    # print("\n" + "=" * 70)
+    # print("PHASE 4: Behavioral Stability Index (BSI)")
+    # print("=" * 70)
+    # from services.behavioral_engine.bsi import compute_bsi_for_all
+    # bsi_df = compute_bsi_for_all(behavioral_df, graph_df)
+    # bsi_df.to_csv('bsi_scores.csv', index=False)
 
-    # Phase 5: Adaptive Monitoring
-    print("\n" + "=" * 70)
-    print("PHASE 5: Adaptive Monitoring System")
-    print("=" * 70)
-    from services.behavioral_engine.adaptive_monitor import compute_monitoring_states
-    monitor_df = compute_monitoring_states(bsi_df)
-    monitor_df.to_csv('monitoring_states.csv', index=False)
+    bsi_df = pd.read_csv('bsi_scores.csv')
+    # # Phase 5: Adaptive Monitoring
+    # print("\n" + "=" * 70)
+    # print("PHASE 5: Adaptive Monitoring System")
+    # print("=" * 70)
+    # from services.behavioral_engine.adaptive_monitor import compute_monitoring_states
+    # monitor_df = compute_monitoring_states(bsi_df)
+    # monitor_df.to_csv('monitoring_states.csv', index=False)
 
+    monitor_df = pd.read_csv('monitoring_states.csv')
+    
     # Phase 6: Risk Scoring (XGBoost Meta-Classifier)
     print("\n" + "=" * 70)
     print("PHASE 6: XGBoost Meta-Risk Classifier")

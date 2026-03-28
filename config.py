@@ -1,6 +1,7 @@
 """ASTRAS Configuration"""
 import os
 
+
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'aml_data.db')
@@ -57,7 +58,7 @@ XGBOOST_PARAMS = {
 }
 
 # LLM
-LLM_MODEL = 'mistral:7b'
+LLM_MODEL = 'mistral:latest'
 EMBEDDING_MODEL = 'nomic-embed-text'
 LLM_TEMPERATURE = 0.1
 LLM_MAX_TOKENS = 2000
