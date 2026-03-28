@@ -378,7 +378,7 @@ class GraphAnalyzer:
     # ==================================================================
     def _get_centrality_signals(self, node: str) -> dict:
         return {
-            "pagerank": float(self.pagerank.get(node, 0.0)),
+            "pagerank_score": float(self.pagerank.get(node, 0.0)),
             "betweenness_centrality": float(self.betweenness.get(node, 0.0)),
             "hits_hub_score": float(self.hits_hubs.get(node, 0.0)),
             "hits_authority_score": float(self.hits_auth.get(node, 0.0)),

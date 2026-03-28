@@ -1,7 +1,7 @@
 """
 ASTRAS Full Pipeline Runner
-Executes all phases: data generation → behavioral signals → graph analysis →
-BSI → adaptive monitoring → risk scoring → RAG setup
+Executes all phases: data generation -> behavioral signals -> graph analysis ->
+BSI -> adaptive monitoring -> risk scoring -> RAG setup
 """
 import os
 import sys
@@ -22,56 +22,43 @@ def run_full_pipeline():
     print("\n" + "=" * 70)
     print("PHASE 1: Synthetic Data Generation")
     print("=" * 70)
-    # from services.data_generation.data_generator import run as generate_data
-    # customers_df, transactions_df, alerts_df = generate_data()
+    from services.data_generation.data_generator import run as generate_data
+    customers_df, transactions_df, alerts_df = generate_data()
 
-    # # If data is already generated 
+    # Phase 2: Behavioral Signal Computation
+    print("\n" + "=" * 70)
+    print("PHASE 2: Behavioral Signal Computation")
+    print("=" * 70)
+    from services.behavioral_engine.behavioral_signals import compute_signals_for_all_customers
+    behavioral_df = compute_signals_for_all_customers(customers_df, transactions_df)
+    behavioral_df.to_csv('behavioral_signals.csv', index=False)
+    print(f"  Behavioral signals: {len(behavioral_df.columns) - 1} features for {len(behavioral_df)} customers")
 
-    customers_df = pd.read_csv("data/generated/customers.csv")
-    transactions_df = pd.read_csv("data/generated/transactions.csv")
-    alerts_df = pd.read_csv("data/generated/alerts.csv")
+    # Phase 3: Graph Analysis (cuGraph GPU when available, NetworkX CPU fallback)
+    print("\n" + "=" * 70)
+    print("PHASE 3: Graph Analysis")
+    print("=" * 70)
+    from services.graph_engine.graph_core import compute_graph_signals_for_all
+    graph_df = compute_graph_signals_for_all(customers_df, transactions_df)
+    graph_df.to_csv('graph_signals.csv', index=False)
+    print(f"  Graph signals: {len(graph_df.columns) - 1} features for {len(graph_df)} customers")
 
-    # # Phase 2: Behavioral Signal Computation
-    # print("\n" + "=" * 70)
-    # print("PHASE 2: Behavioral Signal Computation")
-    # print("=" * 70)
-    # from services.behavioral_engine.behavioral_signals import compute_signals_for_all_customers
-    # behavioral_df = compute_signals_for_all_customers(customers_df, transactions_df)
-    # behavioral_df.to_csv('behavioral_signals.csv', index=False)
-    # print(f"  Behavioral signals: {len(behavioral_df.columns) - 1} features for {len(behavioral_df)} customers")
+    # Phase 4: BSI Computation
+    print("\n" + "=" * 70)
+    print("PHASE 4: Behavioral Stability Index (BSI)")
+    print("=" * 70)
+    from services.behavioral_engine.bsi import compute_bsi_for_all
+    bsi_df = compute_bsi_for_all(behavioral_df, graph_df)
+    bsi_df.to_csv('bsi_scores.csv', index=False)
 
-    # If data is already generated
-    behavioral_df = pd.read_csv('behavioral_signals.csv')
+    # Phase 5: Adaptive Monitoring
+    print("\n" + "=" * 70)
+    print("PHASE 5: Adaptive Monitoring System")
+    print("=" * 70)
+    from services.behavioral_engine.adaptive_monitor import compute_monitoring_states
+    monitor_df = compute_monitoring_states(bsi_df)
+    monitor_df.to_csv('monitoring_states.csv', index=False)
 
-    # # Phase 3: Graph Analysis
-    # print("\n" + "=" * 70)
-    # print("PHASE 3: NetworkX Graph Analysis")
-    # print("=" * 70)
-    # from services.graph_engine.graph_core import compute_graph_signals_for_all
-    # graph_df = compute_graph_signals_for_all(customers_df, transactions_df)
-    # graph_df.to_csv('graph_signals.csv', index=False)
-    # print(f"  Graph signals: {len(graph_df.columns) - 1} features for {len(graph_df)} customers")
-
-    graph_df = pd.read_csv('graph_signals.csv')
-    # # Phase 4: BSI Computation
-    # print("\n" + "=" * 70)
-    # print("PHASE 4: Behavioral Stability Index (BSI)")
-    # print("=" * 70)
-    # from services.behavioral_engine.bsi import compute_bsi_for_all
-    # bsi_df = compute_bsi_for_all(behavioral_df, graph_df)
-    # bsi_df.to_csv('bsi_scores.csv', index=False)
-
-    bsi_df = pd.read_csv('bsi_scores.csv')
-    # # Phase 5: Adaptive Monitoring
-    # print("\n" + "=" * 70)
-    # print("PHASE 5: Adaptive Monitoring System")
-    # print("=" * 70)
-    # from services.behavioral_engine.adaptive_monitor import compute_monitoring_states
-    # monitor_df = compute_monitoring_states(bsi_df)
-    # monitor_df.to_csv('monitoring_states.csv', index=False)
-
-    monitor_df = pd.read_csv('monitoring_states.csv')
-    
     # Phase 6: Risk Scoring (XGBoost Meta-Classifier)
     print("\n" + "=" * 70)
     print("PHASE 6: XGBoost Meta-Risk Classifier")
@@ -80,15 +67,7 @@ def run_full_pipeline():
     features_df, model, explainer, feature_cols, enriched_alerts = run_risk_scorer(
         customers_df, transactions_df, alerts_df, behavioral_df, graph_df, bsi_df
     )
-
-    # Write all to csv
-
     features_df.to_csv('features.csv', index=False)
-    # model.to_csv('model.csv', index=False)
-    # explainer.to_csv('explainer.csv', index=False)
-    #feature_cols.to_csv('features_cols.csv', index=False)
-    #enriched_alerts.to_csv('enriched_alerts.csv', index=False)
-
 
     # Phase 7: RAG Setup
     print("\n" + "=" * 70)
@@ -128,4 +107,3 @@ def run_full_pipeline():
 
 if __name__ == "__main__":
     run_full_pipeline()
-

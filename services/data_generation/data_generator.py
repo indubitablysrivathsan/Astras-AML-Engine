@@ -19,8 +19,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from config import (
     NUM_CUSTOMERS, NUM_SUSPICIOUS, SIMULATION_DAYS, START_DATE_STR,
-    TYPOLOGIES, DB_PATH, DATA_DIR
+    TYPOLOGIES, DB_PATH, DATA_DIR,
+    CRYPTO_RATES_USD, COUNTRY_CURRENCY_MAP,
+    SUPPORTED_CRYPTO, CRYPTO_EXCHANGES,
 )
+from services.data_generation.rates import load_rates, get_usd_rate
 
 fake = Faker('en_US')
 np.random.seed(42)
@@ -38,7 +41,13 @@ GRAY_AREA_PROFILES = [
     'family_remittance',         # Regular transfers to family overseas
     'seasonal_business',         # Seasonal business with burst patterns
     'day_trader',                # Frequent large deposits/withdrawals
+    'crypto_investor',           # Legit crypto trader (false positive for crypto_laundering)
 ]
+
+# Helper: resolve currency for a country
+def _currency_for_country(country):
+    return COUNTRY_CURRENCY_MAP.get(country, 'USD')
+
 
 NUM_GRAY_AREA = 50  # ~5% of customers
 
@@ -93,6 +102,24 @@ def generate_customers(num_customers=NUM_CUSTOMERS, num_suspicious=NUM_SUSPICIOU
         else:
             risk_rating = np.random.choice(['low', 'medium'], p=[0.7, 0.3])
 
+        # Crypto & international activity probabilities
+        if is_suspicious and typology == 'crypto_laundering':
+            intl_prob = np.random.uniform(0.6, 0.9)
+            crypto_user = True
+            preferred_crypto = np.random.choice(SUPPORTED_CRYPTO)
+        elif is_gray_area and gray_profile == 'crypto_investor':
+            intl_prob = np.random.uniform(0.2, 0.5)
+            crypto_user = True
+            preferred_crypto = np.random.choice(SUPPORTED_CRYPTO)
+        elif is_gray_area and gray_profile in ('international_business', 'travel_enthusiast', 'family_remittance'):
+            intl_prob = np.random.uniform(0.3, 0.7)
+            crypto_user = np.random.random() < 0.08
+            preferred_crypto = np.random.choice(SUPPORTED_CRYPTO) if crypto_user else None
+        else:
+            intl_prob = np.random.uniform(0.0, 0.15)
+            crypto_user = np.random.random() < 0.05   # ~5% baseline adoption
+            preferred_crypto = np.random.choice(SUPPORTED_CRYPTO) if crypto_user else None
+
         customers.append({
             'customer_id': i,
             'name': name,
@@ -110,25 +137,36 @@ def generate_customers(num_customers=NUM_CUSTOMERS, num_suspicious=NUM_SUSPICIOU
             'typology': typology,
             'is_gray_area': is_gray_area,
             'gray_profile': gray_profile,
+            'intl_activity_prob': round(intl_prob, 3),
+            'crypto_user': crypto_user,
+            'preferred_crypto': preferred_crypto,
         })
 
     return pd.DataFrame(customers)
 
 
 def _make_txn(customer_id, date, txn_type, amount, method, location, description,
-              counterparty=None, counterparty_account=None, counterparty_bank=None, country='USA'):
+              counterparty=None, counterparty_account=None, counterparty_bank=None,
+              country='USA', currency='USD', crypto_asset=None):
+    # amount is stored in native currency units (EUR, INR, BTC, etc.).
+    # usd_rate is the daily close rate from Yahoo Finance for that date,
+    # stored as a reference column for downstream normalization.
+    usd_rate = get_usd_rate(currency, date)
     return {
         'customer_id': customer_id,
         'transaction_date': date.strftime('%Y-%m-%d %H:%M:%S'),
         'transaction_type': txn_type,
-        'amount': round(amount, 2),
+        'amount': round(amount, 8) if crypto_asset else round(amount, 2),
+        'currency': currency,
+        'usd_rate': round(usd_rate, 8),
         'method': method,
         'location': location,
         'description': description,
         'counterparty': counterparty,
         'counterparty_account': counterparty_account,
         'counterparty_bank': counterparty_bank,
-        'country': country
+        'country': country,
+        'crypto_asset': crypto_asset,
     }
 
 
@@ -146,17 +184,22 @@ def generate_international_business(customer, start_date):
         for partner, country in partners[:np.random.randint(2, 5)]:
             d = start_date + timedelta(days=month * 30 + np.random.randint(0, 15))
             amt = np.random.uniform(15000, 80000)
+            cur = _currency_for_country(country)
             txns.append(_make_txn(customer['customer_id'], d, 'withdrawal', amt, 'wire',
                                   'Wire Transfer', 'Supplier Payment', partner, fake.bban(),
-                                  partner + ' Bank', country))
+                                  partner + ' Bank', country,
+                                  currency=cur))
         # Revenue from clients
         for _ in range(np.random.randint(2, 6)):
             d = start_date + timedelta(days=month * 30 + np.random.randint(0, 28))
             amt = np.random.uniform(10000, 120000)
             cp = fake.company()
+            rev_country = np.random.choice(['USA', 'UK', 'Germany'])
+            rev_cur = _currency_for_country(rev_country)
             txns.append(_make_txn(customer['customer_id'], d, 'deposit', amt, 'wire',
                                   'Wire Transfer', 'Client Payment', cp, fake.bban(),
-                                  cp + ' Bank', np.random.choice(['USA', 'UK', 'Germany'])))
+                                  cp + ' Bank', rev_country,
+                                  currency=rev_cur))
     return txns
 
 
@@ -272,6 +315,7 @@ def generate_family_remittance(customer, start_date):
     txns = []
     family_country = np.random.choice(['Philippines', 'Mexico', 'India', 'Nigeria', 'Vietnam'])
     family_names = [fake.name() for _ in range(3)]
+    rem_cur = _currency_for_country(family_country)
     for month in range(12):
         # Salary
         d = start_date + timedelta(days=month * 30 + 1)
@@ -284,7 +328,8 @@ def generate_family_remittance(customer, start_date):
             txns.append(_make_txn(customer['customer_id'], rd, 'withdrawal',
                                   np.random.uniform(500, 3000), 'wire', 'Wire Transfer',
                                   'Family Support', fam, fake.bban(),
-                                  fake.company() + ' Bank', family_country))
+                                  fake.company() + ' Bank', family_country,
+                                  currency=rem_cur))
         # Normal expenses
         for _ in range(np.random.randint(5, 12)):
             d = start_date + timedelta(days=month * 30 + np.random.randint(0, 28))
@@ -345,6 +390,55 @@ def generate_day_trader(customer, start_date):
     return txns
 
 
+def generate_legit_crypto_investor(customer, start_date):
+    """Legitimate crypto trader — high volume but proportional to income.
+    Creates false positives for crypto_laundering detection because the
+    pattern (fiat -> exchange -> withdraw crypto gains) looks similar."""
+    txns = []
+    preferred = customer.get('preferred_crypto', 'BTC')
+    exchange = np.random.choice(CRYPTO_EXCHANGES)
+    exchange_acct = fake.bban()
+
+    for month in range(12):
+        # Salary / income deposit (USD, normal)
+        sal_d = start_date + timedelta(days=month * 30 + 1)
+        txns.append(_make_txn(customer['customer_id'], sal_d, 'deposit',
+                              customer['annual_income'] / 12 * np.random.uniform(0.95, 1.05),
+                              'ach', 'ACH Deposit', 'Salary', fake.company()))
+
+        # 2-4 crypto purchases per month (looks like crypto_laundering but legit)
+        # Amounts in crypto native units
+        for _ in range(np.random.randint(2, 5)):
+            d = start_date + timedelta(days=month * 30 + np.random.randint(1, 28))
+            if preferred == 'BTC':
+                buy_amt = np.random.uniform(0.005, 0.12)
+            elif preferred == 'ETH':
+                buy_amt = np.random.uniform(0.1, 2.5)
+            else:  # USDT
+                buy_amt = np.random.uniform(500, 8000)
+            txns.append(_make_txn(customer['customer_id'], d, 'withdrawal', buy_amt,
+                                  'crypto_exchange', exchange, f'Buy {preferred}',
+                                  exchange, exchange_acct, exchange,
+                                  currency=preferred, crypto_asset=preferred))
+
+        # Occasional crypto sale (profit taking — deposit back in USD)
+        if np.random.random() < 0.35:
+            d = start_date + timedelta(days=month * 30 + np.random.randint(15, 28))
+            sell_amt = np.random.uniform(2000, 15000)  # USD proceeds
+            txns.append(_make_txn(customer['customer_id'], d, 'deposit', sell_amt,
+                                  'crypto_exchange', exchange, f'Sell {preferred}',
+                                  exchange, exchange_acct, exchange,
+                                  currency='USD', crypto_asset=preferred))
+
+        # Normal card spending
+        for _ in range(np.random.randint(5, 12)):
+            d = start_date + timedelta(days=month * 30 + np.random.randint(0, 28))
+            txns.append(_make_txn(customer['customer_id'], d, 'withdrawal',
+                                  np.random.uniform(20, 800), 'card',
+                                  fake.company(), 'Purchase'))
+    return txns
+
+
 GRAY_AREA_GENERATORS = {
     'international_business': generate_international_business,
     'cash_restaurant': generate_cash_restaurant,
@@ -354,6 +448,7 @@ GRAY_AREA_GENERATORS = {
     'family_remittance': generate_family_remittance,
     'seasonal_business': generate_seasonal_business,
     'day_trader': generate_day_trader,
+    'crypto_investor': generate_legit_crypto_investor,
 }
 
 
@@ -380,22 +475,26 @@ def generate_structuring_pattern(customer, start_date, num_days=30):
 
 def generate_rapid_movement_pattern(customer, start_date, num_cycles=5):
     txns = []
-    # Some cycles are slower (not all rapid)
+    # Bursty: small pool of counterparties reused, occasional new ones
+    src_pool = [(fake.company(), fake.bban()) for _ in range(3)]
+    dst_pool = [(fake.name(), fake.bban(), fake.company() + ' Bank') for _ in range(2)]
     for cycle in range(num_cycles):
         cs = start_date + timedelta(days=cycle * np.random.randint(20, 45))
         dep_amt = np.random.uniform(15000, 150000)
-        cp = fake.company()
+        # Burst: reuse same counterparty for consecutive cycles, expand occasionally
+        if cycle > 2 and np.random.random() < 0.3:
+            src_pool.append((fake.company(), fake.bban()))
+        cp, cp_acct = src_pool[cycle % len(src_pool)]
         txns.append(_make_txn(customer['customer_id'], cs, 'deposit', dep_amt, 'wire', 'Wire Transfer',
-                              'Incoming Wire', cp, fake.bban(), cp + ' Bank',
+                              'Incoming Wire', cp, cp_acct, cp + ' Bank',
                               np.random.choice(['China', 'Russia', 'UAE', 'Panama', 'Cyprus', 'USA', 'UK'])))
-        # Variable delay: some rapid, some not
         delay_hrs = int(np.random.choice([np.random.randint(12, 48),
                                            np.random.randint(48, 240)]))
         wd = cs + timedelta(hours=delay_hrs)
         wa = dep_amt * np.random.uniform(0.85, 0.99)
-        cp2 = fake.name()
+        dst = dst_pool[cycle % len(dst_pool)]
         txns.append(_make_txn(customer['customer_id'], wd, 'withdrawal', wa, 'wire', 'Wire Transfer',
-                              'Outgoing Wire', cp2, fake.bban(), fake.company() + ' Bank',
+                              'Outgoing Wire', dst[0], dst[1], dst[2],
                               np.random.choice(['Cayman Islands', 'Switzerland', 'Singapore', 'Hong Kong', 'USA'])))
     return txns
 
@@ -418,25 +517,29 @@ def generate_cash_intensive_pattern(customer, start_date, num_months=12):
 
 def generate_shell_company_pattern(customer, start_date, num_wires=20):
     txns = []
-    # Reduce count, add some domestic wires to reduce signal
     num_wires = np.random.randint(10, 20)
-    for _ in range(num_wires):
+    # Bursty: 2-3 shell entities feed into 1-2 destinations, reused heavily
+    shell_src = [(fake.company() + ' Ltd', fake.bban()) for _ in range(np.random.randint(2, 4))]
+    shell_dst = [(fake.company() + ' Holdings', fake.bban()) for _ in range(np.random.randint(1, 3))]
+    for i in range(num_wires):
         d = start_date + timedelta(days=np.random.randint(0, 365))
         amt_in = np.random.uniform(50000, 500000)
-        cp1 = fake.company()
-        # Mix of offshore and onshore
+        src = shell_src[i % len(shell_src)]
         in_country = np.random.choice(
             ['British Virgin Islands', 'Seychelles', 'Belize', 'Malta', 'USA', 'UK', 'USA'],
         )
         txns.append(_make_txn(customer['customer_id'], d, 'deposit', amt_in, 'wire', 'Wire Transfer',
-                              'International Wire - Consulting Fees', cp1, fake.bban(), cp1 + ' Bank',
+                              'International Wire - Consulting Fees', src[0], src[1], src[0] + ' Bank',
                               in_country))
-        wd = d + timedelta(days=np.random.randint(2, 15))  # wider delay range
+        wd = d + timedelta(days=np.random.randint(2, 15))
         amt_out = amt_in * np.random.uniform(0.85, 0.98)
-        cp2 = fake.company()
+        dst = shell_dst[i % len(shell_dst)]
         txns.append(_make_txn(customer['customer_id'], wd, 'withdrawal', amt_out, 'wire', 'Wire Transfer',
-                              'Wire Transfer - Vendor Payment', cp2, fake.bban(), cp2 + ' Bank',
+                              'Wire Transfer - Vendor Payment', dst[0], dst[1], dst[0] + ' Bank',
                               np.random.choice(['Luxembourg', 'Panama', 'Cyprus', 'Mauritius', 'USA'])))
+        # Inject new shell entity mid-sequence (expansion burst)
+        if i == num_wires // 2:
+            shell_src.append((fake.company() + ' Intl', fake.bban()))
     return txns
 
 
@@ -481,39 +584,49 @@ def generate_third_party_pattern(customer, start_date, num_payments=15):
 def generate_layering_pattern(customer, start_date, num_chains=5):
     txns = []
     num_chains = np.random.randint(3, 6)
+    # Layering reuses a small set of intermediaries across chains (bursty)
+    intermediaries = [(fake.company(), fake.bban()) for _ in range(4)]
     for chain in range(num_chains):
         cs = start_date + timedelta(days=chain * np.random.randint(40, 80))
         initial = np.random.uniform(30000, 200000)
-        cp = fake.company()
+        entry = intermediaries[chain % len(intermediaries)]
         txns.append(_make_txn(customer['customer_id'], cs, 'deposit', initial, 'wire', 'Wire Transfer',
-                              'Wire Transfer In', cp, fake.bban(), cp + ' Bank'))
+                              'Wire Transfer In', entry[0], entry[1], entry[0] + ' Bank'))
         cur_amt, cur_date = initial, cs
         for hop in range(np.random.randint(3, 8)):
             cur_date += timedelta(days=np.random.randint(2, 15))
             cur_amt *= np.random.uniform(0.90, 0.99)
             t_type = 'withdrawal' if hop % 2 == 1 else 'deposit'
-            cp_h = fake.company()
+            # Reuse intermediary pool — same entities seen across hops
+            cp_h = intermediaries[(chain + hop) % len(intermediaries)]
             txns.append(_make_txn(customer['customer_id'], cur_date, t_type, cur_amt, 'wire', 'Wire Transfer',
-                                  f'Transfer {hop + 1}', cp_h, fake.bban(), cp_h + ' Bank',
+                                  f'Transfer {hop + 1}', cp_h[0], cp_h[1], cp_h[0] + ' Bank',
                                   np.random.choice(['USA', 'UK', 'Germany', 'Singapore', 'Switzerland'])))
+        # Expansion burst: inject new intermediary every other chain
+        if chain % 2 == 1:
+            intermediaries.append((fake.company(), fake.bban()))
     return txns
 
 
 def generate_round_tripping_pattern(customer, start_date, num_cycles=4):
     txns = []
     num_cycles = np.random.randint(2, 5)
+    # Round-tripping: same entity pair used across cycles (bursty concentration)
+    outbound_entity = (fake.company(), fake.bban(), fake.company() + ' Bank')
+    # Return entity is a slightly different name variant (same beneficial owner pattern)
+    inbound_entity = (outbound_entity[0] + ' Holdings Ltd', fake.bban(), fake.company() + ' Bank')
     for cycle in range(num_cycles):
         cs = start_date + timedelta(days=cycle * np.random.randint(60, 120))
         amount = np.random.uniform(30000, 300000)
-        cp1 = fake.company()
         txns.append(_make_txn(customer['customer_id'], cs, 'withdrawal', amount, 'wire', 'Wire Transfer',
-                              'Investment Wire - Overseas', cp1, fake.bban(), cp1 + ' Bank',
+                              'Investment Wire - Overseas', outbound_entity[0], outbound_entity[1],
+                              outbound_entity[2],
                               np.random.choice(['Cayman Islands', 'British Virgin Islands', 'Panama', 'USA'])))
         ret_d = cs + timedelta(days=np.random.randint(20, 90))
         ret_a = amount * np.random.uniform(0.98, 1.15)
-        cp2 = fake.company() + ' Holdings Ltd'
         txns.append(_make_txn(customer['customer_id'], ret_d, 'deposit', ret_a, 'wire', 'Wire Transfer',
-                              'Investment Return - Foreign Entity', cp2, fake.bban(), fake.company() + ' Bank',
+                              'Investment Return - Foreign Entity', inbound_entity[0], inbound_entity[1],
+                              inbound_entity[2],
                               np.random.choice(['Luxembourg', 'Switzerland', 'Singapore', 'USA'])))
     return txns
 
@@ -547,20 +660,26 @@ def generate_trade_based_pattern(customer, start_date, num_invoices=8):
     txns = []
     goods = ['Electronics', 'Textiles', 'Auto Parts', 'Machinery', 'Pharmaceuticals']
     num_invoices = np.random.randint(4, 9)
-    for _ in range(num_invoices):
+    # Bursty: same 2 trade partners used repeatedly (concentrated risk)
+    buyer = (fake.company() + ' Trading Co', fake.bban())
+    supplier = (fake.company() + ' Mfg', fake.bban())
+    for i in range(num_invoices):
         id_ = start_date + timedelta(days=np.random.randint(0, 365))
         fair = np.random.uniform(10000, 50000)
-        invoiced = fair * np.random.uniform(1.5, 4.0)  # lower multiplier range
-        cp1 = fake.company()
+        invoiced = fair * np.random.uniform(1.5, 4.0)
         txns.append(_make_txn(customer['customer_id'], id_, 'deposit', invoiced, 'wire', 'Wire Transfer',
-                              f'Trade Payment - {np.random.choice(goods)}', cp1, fake.bban(), cp1 + ' Bank',
+                              f'Trade Payment - {np.random.choice(goods)}', buyer[0], buyer[1],
+                              buyer[0] + ' Bank',
                               np.random.choice(['China', 'Turkey', 'India', 'Nigeria', 'Vietnam', 'USA'])))
         sd = id_ + timedelta(days=np.random.randint(5, 20))
         sa = fair * np.random.uniform(0.7, 1.1)
-        cp2 = fake.company()
         txns.append(_make_txn(customer['customer_id'], sd, 'withdrawal', sa, 'wire', 'Wire Transfer',
-                              f'Supplier Payment - {np.random.choice(goods)}', cp2, fake.bban(), cp2 + ' Bank',
+                              f'Supplier Payment - {np.random.choice(goods)}', supplier[0], supplier[1],
+                              supplier[0] + ' Bank',
                               np.random.choice(['China', 'Turkey', 'India', 'USA'])))
+        # Expansion burst halfway through
+        if i == num_invoices // 2:
+            buyer = (fake.company() + ' Imports', fake.bban())
     return txns
 
 
@@ -597,6 +716,105 @@ def generate_normal_transactions(customer, start_date, num_days=365):
     return txns
 
 
+def generate_crypto_laundering_pattern(customer, start_date, num_cycles=5):
+    """Cryptocurrency-facilitated money laundering: fiat -> crypto exchange ->
+    cross-border transfer -> conversion back to different fiat currency.
+    Each cycle follows the 4-stage placement-layering-integration pattern
+    through digital asset rails.
+
+    Counterparties are BURSTY: a small pool of shell entities is reused
+    across cycles (triggers counterparty-concentration signals), with
+    occasional new entities injected mid-run (triggers expansion signals).
+    """
+    txns = []
+    preferred = customer.get('preferred_crypto', np.random.choice(SUPPORTED_CRYPTO))
+    num_cycles = np.random.randint(3, 7)
+
+    # Crypto amount ranges per asset (realistic native-currency units)
+    CRYPTO_AMT_RANGES = {
+        'BTC': (0.05, 3.0),      # $3,250 – $195,000 at 65k
+        'ETH': (0.5, 50.0),      # $1,700 – $170,000 at 3.4k
+        'USDT': (5000, 200000),   # stablecoin, 1:1 USD
+    }
+
+    # Fiat amount ranges per currency (in local currency units)
+    FIAT_AMT_RANGES = {
+        'USD': (20000, 200000),
+        'EUR': (18000, 180000),
+        'AED': (75000, 750000),
+        'INR': (1500000, 15000000),
+    }
+
+    # Country/currency pairs for the laundering corridors
+    corridors = [
+        ('UAE', 'AED'), ('India', 'INR'), ('Germany', 'EUR'),
+        ('Singapore', 'USD'), ('UK', 'EUR'), ('Switzerland', 'EUR'),
+    ]
+
+    # --- BURSTY counterparty pool ---
+    # Small fixed pool (3-4 entities) reused heavily → triggers concentration
+    shell_pool = [(fake.company(), fake.bban(), fake.company() + ' Bank')
+                  for _ in range(np.random.randint(3, 5))]
+    exchange_pool = list(np.random.choice(CRYPTO_EXCHANGES, size=2, replace=False))
+
+    for cycle in range(num_cycles):
+        cs = start_date + timedelta(days=cycle * np.random.randint(30, 70))
+
+        # Occasionally inject a NEW counterparty mid-run (expansion burst)
+        if cycle > 0 and np.random.random() < 0.3:
+            shell_pool.append((fake.company(), fake.bban(), fake.company() + ' Bank'))
+
+        # Pick from the small pool (bursty reuse)
+        shell = shell_pool[cycle % len(shell_pool)]
+        exchange = exchange_pool[cycle % len(exchange_pool)]
+
+        # --- Stage 1: Fiat deposit (placement) ---
+        src_country, src_currency = corridors[cycle % len(corridors)]
+        fiat_lo, fiat_hi = FIAT_AMT_RANGES.get(src_currency, (20000, 200000))
+        fiat_amt = np.random.uniform(fiat_lo, fiat_hi)
+        txns.append(_make_txn(customer['customer_id'], cs, 'deposit',
+                              fiat_amt, 'wire', 'Wire Transfer', 'Incoming Wire',
+                              shell[0], shell[1], shell[2], src_country,
+                              currency=src_currency))
+
+        # --- Stage 2: Crypto purchase at exchange (layering entry) ---
+        buy_delay = timedelta(hours=np.random.randint(2, 48))
+        crypto_lo, crypto_hi = CRYPTO_AMT_RANGES.get(preferred, (0.1, 5.0))
+        crypto_amt = np.random.uniform(crypto_lo, crypto_hi)
+        txns.append(_make_txn(customer['customer_id'], cs + buy_delay, 'withdrawal',
+                              crypto_amt, 'crypto_exchange', exchange,
+                              f'Purchase {preferred}', exchange, fake.bban(), exchange,
+                              country=src_country, currency=preferred,
+                              crypto_asset=preferred))
+
+        # --- Stage 3: Cross-border crypto deposit (different country/exchange) ---
+        xfer_delay = timedelta(days=np.random.randint(1, 14))
+        dest_country, dest_currency = corridors[(cycle + 2) % len(corridors)]
+        recv_exchange = exchange_pool[(cycle + 1) % len(exchange_pool)]
+        # Received crypto amount slightly less (network fees)
+        recv_crypto = crypto_amt * np.random.uniform(0.97, 0.999)
+        txns.append(_make_txn(customer['customer_id'], cs + buy_delay + xfer_delay,
+                              'deposit', recv_crypto, 'crypto_exchange', recv_exchange,
+                              f'Receive {preferred}', recv_exchange,
+                              fake.bban(), recv_exchange, dest_country,
+                              currency=preferred, crypto_asset=preferred))
+
+        # --- Stage 4: Fiat withdrawal to bank (integration) ---
+        cash_out_delay = timedelta(days=np.random.randint(1, 7))
+        dest_lo, dest_hi = FIAT_AMT_RANGES.get(dest_currency, (20000, 200000))
+        # Cash out in destination fiat (slightly less than deposited value)
+        final_fiat = np.random.uniform(dest_lo * 0.7, dest_hi * 0.6)
+        dest_shell = shell_pool[(cycle + 1) % len(shell_pool)]
+        txns.append(_make_txn(customer['customer_id'],
+                              cs + buy_delay + xfer_delay + cash_out_delay,
+                              'withdrawal', final_fiat, 'wire', 'Wire Transfer',
+                              f'Funds Transfer', dest_shell[0],
+                              dest_shell[1], dest_shell[2], dest_country,
+                              currency=dest_currency))
+
+    return txns
+
+
 PATTERN_GENERATORS = {
     'structuring': generate_structuring_pattern,
     'rapid_movement': generate_rapid_movement_pattern,
@@ -608,6 +826,7 @@ PATTERN_GENERATORS = {
     'round_tripping': generate_round_tripping_pattern,
     'funnel_account': generate_funnel_account_pattern,
     'trade_based': generate_trade_based_pattern,
+    'crypto_laundering': generate_crypto_laundering_pattern,
 }
 
 
@@ -682,6 +901,7 @@ def create_alerts(customers_df, transactions_df):
             'family_remittance': 'rapid_movement',
             'seasonal_business': 'cash_intensive',
             'day_trader': 'rapid_movement',
+            'crypto_investor': 'crypto_laundering',
         }
         apparent_typology = profile_to_typology.get(customer.get('gray_profile', ''), 'structuring')
         alerts.append({
@@ -718,6 +938,9 @@ def run():
     print("=" * 60)
     print("AML SYNTHETIC DATA GENERATION")
     print("=" * 60)
+
+    # Pre-fetch / load daily FX + crypto rates for simulation period
+    load_rates()
 
     customers_df = generate_customers()
     transactions_df = generate_all_transactions(customers_df)

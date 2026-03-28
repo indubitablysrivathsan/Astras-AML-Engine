@@ -51,13 +51,22 @@ def format_transaction_summary(transactions, top_n=20):
     cash = txns[txns['method'] == 'cash']
     intl = txns[txns['country'] != 'USA']
 
+    crypto = txns[txns['method'] == 'crypto_exchange'] if 'method' in txns.columns else pd.DataFrame()
+    currencies_used = sorted(txns['currency'].unique().tolist()) if 'currency' in txns.columns else ['USD']
+    crypto_assets = sorted(txns['crypto_asset'].dropna().unique().tolist()) if 'crypto_asset' in txns.columns else []
+
     summary = f"""Total Transactions: {len(txns)}
 Date Range: {txns['transaction_date'].min().strftime('%Y-%m-%d')} to {txns['transaction_date'].max().strftime('%Y-%m-%d')}
 Total Deposits: ${deposits['amount'].sum():,.2f} ({len(deposits)} transactions)
 Total Withdrawals: ${withdrawals['amount'].sum():,.2f} ({len(withdrawals)} transactions)
 Net Flow: ${deposits['amount'].sum() - withdrawals['amount'].sum():,.2f}
 Cash Transactions: {len(cash)} totaling ${cash['amount'].sum():,.2f}
-International Transactions: {len(intl)} across {intl['country'].nunique()} countries"""
+International Transactions: {len(intl)} across {intl['country'].nunique()} countries
+Currencies Used: {', '.join(currencies_used)}"""
+
+    if len(crypto) > 0:
+        summary += f"\nCryptocurrency Exchange Transactions: {len(crypto)} totaling ${crypto['amount'].sum():,.2f}"
+        summary += f"\nCrypto Assets Involved: {', '.join(crypto_assets) if crypto_assets else 'N/A'}"
 
     if len(intl) > 0:
         summary += f"\nCountries: {', '.join(intl['country'].unique()[:10])}"
@@ -189,6 +198,7 @@ CRITICAL REQUIREMENTS:
 4. Use specific amounts, dates, and numbers from the data
 5. Length: 400-600 words
 6. Start directly with "INTRODUCTION" - no preamble
+7. If crypto exchange transactions are present, include a SOURCE OF FIAT FUNDS section between INTRODUCTION and WHO that traces the fiat deposits preceding crypto purchases (per FinCEN guidance on virtual currency SARs)
 
 SAR NARRATIVE:
 """

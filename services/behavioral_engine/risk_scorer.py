@@ -15,7 +15,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import XGBOOST_PARAMS, MODELS_DIR, DB_PATH, HIGH_RISK_COUNTRIES
+from config import XGBOOST_PARAMS, MODELS_DIR, DB_PATH, HIGH_RISK_COUNTRIES, COUNTRY_PPL, DEFAULT_PPL
 
 
 def engineer_traditional_features(customers_df, transactions_df):
@@ -38,6 +38,8 @@ def engineer_traditional_features(customers_df, transactions_df):
         intl = ctxns[ctxns['country'] != 'USA']
         high_risk = ctxns[ctxns['country'].isin(HIGH_RISK_COUNTRIES)]
         under_10k = ctxns[(ctxns['amount'] >= 7000) & (ctxns['amount'] < 10000)]
+        crypto = ctxns[ctxns['method'] == 'crypto_exchange'] if 'method' in ctxns.columns else pd.DataFrame()
+        num_currencies = ctxns['currency'].nunique() if 'currency' in ctxns.columns else 1
 
         sorted_txns = ctxns.sort_values('transaction_date')
         time_diffs = sorted_txns['transaction_date'].diff()
@@ -46,6 +48,30 @@ def engineer_traditional_features(customers_df, transactions_df):
         if len(time_diffs.dropna()) > 0:
             avg_td = time_diffs.dropna().mean()
             avg_days = avg_td.days if hasattr(avg_td, 'days') else 0
+
+        # PPP asymmetry: log(PLI_receiver / PLI_sender) per transaction, then averaged.
+        # Positive = cheap→expensive flow. Negative = expensive→cheap.
+        # Only meaningful for international wire transactions.
+        cust_ppl = COUNTRY_PPL.get(customer.get('country', 'USA'), DEFAULT_PPL)
+        ppp_asymmetries = []
+        for _, txn in intl[intl['method'] == 'wire'].iterrows():
+            cp_country = txn.get('country', 'USA')
+            cp_ppl = COUNTRY_PPL.get(cp_country, DEFAULT_PPL)
+            if txn['transaction_type'] == 'deposit':
+                # money coming in: sender=counterparty, receiver=customer
+                sender_ppl, receiver_ppl = cp_ppl, cust_ppl
+            else:
+                # money going out: sender=customer, receiver=counterparty
+                sender_ppl, receiver_ppl = cust_ppl, cp_ppl
+            if sender_ppl > 0:
+                ppp_asymmetries.append(np.log(receiver_ppl / sender_ppl))
+        avg_ppp_asymmetry = float(np.mean(ppp_asymmetries)) if ppp_asymmetries else 0.0
+        # USD-converted total volume using the daily usd_rate stored at
+        # generation time (covers both FX and crypto correctly).
+        if 'usd_rate' in ctxns.columns:
+            usd_volume = (ctxns['amount'] * ctxns['usd_rate']).sum()
+        else:
+            usd_volume = ctxns['amount'].sum()
 
         features_list.append({
             'customer_id': customer['customer_id'],
@@ -76,9 +102,20 @@ def engineer_traditional_features(customers_df, transactions_df):
             'pct_just_under_10k': len(under_10k) / len(ctxns),
             'num_rapid_sequence_txns': rapid,
             'avg_days_between_txns': avg_days,
-            'volume_to_income_ratio': ctxns['amount'].sum() / (customer['annual_income'] + 1),
+            'volume_to_income_ratio': usd_volume / (customer['annual_income'] + 1),
+            'usd_volume': usd_volume,
+            # PPP asymmetry: avg log(PLI_receiver / PLI_sender) across intl wires.
+            # Positive = money flowing from cheap to expensive countries (suspicious).
+            # Negative = expensive to cheap (e.g. remittance, less suspicious).
+            # Zero = domestic only.
+            'avg_ppp_asymmetry': round(avg_ppp_asymmetry, 4),
             'num_unique_counterparties': ctxns['counterparty'].nunique(),
             'num_unique_locations': ctxns['location'].nunique(),
+            # Crypto-specific features
+            'num_crypto_txns': len(crypto),
+            'total_crypto_volume': crypto['amount'].sum() if len(crypto) > 0 else 0,
+            'num_currencies_used': num_currencies,
+            'crypto_volume_to_income_ratio': (crypto['amount'].sum() / (customer['annual_income'] + 1)) if len(crypto) > 0 else 0,
             'is_suspicious': int(customer['is_suspicious']),
             'typology': customer['typology'] if customer['is_suspicious'] else 'normal',
         })

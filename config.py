@@ -19,13 +19,86 @@ START_DATE_STR = '2025-01-01'
 TYPOLOGIES = [
     'structuring', 'rapid_movement', 'layering', 'trade_based',
     'cash_intensive', 'shell_company', 'funnel_account',
-    'third_party_payments', 'round_tripping', 'smurfing'
+    'third_party_payments', 'round_tripping', 'smurfing',
+    'crypto_laundering'
 ]
 
 HIGH_RISK_COUNTRIES = [
     'China', 'Russia', 'UAE', 'Panama', 'Cyprus', 'Cayman Islands',
     'British Virgin Islands', 'Seychelles', 'Belize', 'Malta',
     'Luxembourg', 'Mauritius', 'Hong Kong', 'Singapore', 'Switzerland'
+]
+
+# Currency & Cryptocurrency
+SUPPORTED_CURRENCIES = ['USD', 'EUR', 'AED', 'INR']
+SUPPORTED_CRYPTO = ['BTC', 'ETH', 'USDT']
+
+FX_RATES = {          # to-USD multipliers (amount * rate = USD equivalent)
+    'USD': 1.0,
+    'EUR': 1.09,      # 1 EUR = 1.09 USD
+    'AED': 0.2723,    # 1 AED = 0.27 USD
+    'INR': 0.01198,   # 1 INR = 0.012 USD
+}
+
+CRYPTO_RATES_USD = {   # 1 unit of crypto in USD
+    'BTC': 65000.0,
+    'ETH': 3400.0,
+    'USDT': 1.0,
+}
+
+# PPP price-level index per country (World Bank 2024, USA = 1.0)
+# PLI = PPP_rate / FX_rate — how cheap a country is relative to the US.
+# Low PLI = cheap country.  High PLI = expensive country.
+# Used to compute transaction asymmetry: log(PLI_receiver / PLI_sender)
+# High positive asymmetry = cheap→expensive flow = economically suspicious.
+COUNTRY_PPL = {
+    'USA':                  1.00,
+    'UK':                   0.82,
+    'Germany':              0.80,
+    'France':               0.79,
+    'Italy':                0.72,
+    'Spain':                0.68,
+    'Portugal':             0.63,
+    'Switzerland':          1.10,   # more expensive than US
+    'UAE':                  0.50,
+    'Singapore':            0.84,
+    'Hong Kong':            0.81,
+    'Japan':                0.65,
+    'China':                0.46,
+    'India':                0.27,
+    'Philippines':          0.30,
+    'Vietnam':              0.29,
+    'Nigeria':              0.28,
+    'Mexico':               0.40,
+    'Panama':               0.55,
+    'Russia':               0.38,
+    'Turkey':               0.32,
+    # Offshore/secrecy jurisdictions — treat as opaque (use 0.6 neutral)
+    'Cayman Islands':       0.60,
+    'British Virgin Islands': 0.60,
+    'Belize':               0.60,
+    'Seychelles':           0.60,
+    'Luxembourg':           0.85,
+    'Malta':                0.70,
+    'Mauritius':            0.45,
+    'Cyprus':               0.68,
+    'Canada':               0.87,
+}
+# Fallback for unmapped countries
+DEFAULT_PPL = 0.60
+
+COUNTRY_CURRENCY_MAP = {
+    'Germany': 'EUR', 'France': 'EUR', 'Italy': 'EUR', 'Spain': 'EUR',
+    'UK': 'EUR', 'Portugal': 'EUR', 'Switzerland': 'EUR',
+    'UAE': 'AED',
+    'India': 'INR',
+    'Philippines': 'INR',   # remittance corridor, often settles in INR
+}
+# All unmapped countries default to 'USD'
+
+CRYPTO_EXCHANGES = [
+    'CoinFlow Exchange', 'BitVault Pro', 'ChainBridge Markets',
+    'TokenHarbor', 'DigitalMint Exchange', 'CryptoNest Global',
 ]
 
 # Behavioral signals
