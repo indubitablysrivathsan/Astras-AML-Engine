@@ -5,7 +5,13 @@ Uses structured templates filled with actual data - no AI required.
 """
 import pandas as pd
 import numpy as np
+import os
+import sys
 from datetime import datetime
+
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.insert(0, _ROOT)
+from config import DB_PATH
 
 
 def generate_fallback_narrative(alert, customer, transactions, risk_score=0.0,
@@ -48,16 +54,22 @@ def generate_fallback_narrative(alert, customer, transactions, risk_score=0.0,
     # Source of Fiat Funds section (mandatory for crypto SARs per FinCEN guidance)
     fiat_funds_section = ""
     if len(crypto) > 0 and alert['alert_type'] == 'crypto_laundering':
-        # Reconstruct fiat chain: find fiat deposits that preceded crypto purchases
-        fiat_deposits = deposits[deposits['method'] != 'crypto_exchange']
-        fiat_amt = fiat_deposits['amount'].sum() if len(fiat_deposits) > 0 else 0
-        fiat_methods = ', '.join(fiat_deposits['method'].unique()[:3]) if len(fiat_deposits) > 0 else 'wire'
-        fiat_countries = ', '.join(fiat_deposits['country'].unique()[:5]) if len(fiat_deposits) > 0 else 'Unknown'
-        fiat_currencies_str = ', '.join(currencies_used)
-        crypto_assets_str = ', '.join(crypto_assets_used) if crypto_assets_used else 'Unknown'
-        exchanges = ', '.join(crypto['location'].unique()[:4]) if len(crypto) > 0 else 'Unknown'
-
-        fiat_funds_section = f"""
+        # Use structured crypto_flow reconstruction when available
+        try:
+            from services.crypto_flow import reconstruct_crypto_flow
+            db_path = alert.get('_db_path', DB_PATH)
+            flow = reconstruct_crypto_flow(int(alert['customer_id']), db_path)
+            fiat_funds_section = "\n" + flow['narrative'] + "\n"
+        except Exception:
+            # Graceful degradation: use simple aggregated stats
+            fiat_deposits = deposits[deposits['method'] != 'crypto_exchange']
+            fiat_amt = fiat_deposits['amount'].sum() if len(fiat_deposits) > 0 else 0
+            fiat_methods = ', '.join(fiat_deposits['method'].unique()[:3]) if len(fiat_deposits) > 0 else 'wire'
+            fiat_countries = ', '.join(fiat_deposits['country'].unique()[:5]) if len(fiat_deposits) > 0 else 'Unknown'
+            fiat_currencies_str = ', '.join(currencies_used)
+            crypto_assets_str = ', '.join(crypto_assets_used) if crypto_assets_used else 'Unknown'
+            exchanges = ', '.join(crypto['location'].unique()[:4]) if len(crypto) > 0 else 'Unknown'
+            fiat_funds_section = f"""
 SOURCE OF FIAT FUNDS
 Pursuant to FinCEN regulatory guidance on virtual currency transactions, the institution has traced the fiat currency deposits that preceded cryptocurrency acquisitions. Fiat deposits totaling ${fiat_amt:,.2f} were received via {fiat_methods} from counterparties in {fiat_countries}, denominated in {fiat_currencies_str}. These funds were subsequently converted to digital assets ({crypto_assets_str}) through cryptocurrency exchanges including {exchanges}. The source of the original fiat funds could not be independently verified beyond the immediate remitting institution.
 """

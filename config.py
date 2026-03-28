@@ -97,9 +97,23 @@ COUNTRY_CURRENCY_MAP = {
 # All unmapped countries default to 'USD'
 
 CRYPTO_EXCHANGES = [
-    'CoinFlow Exchange', 'BitVault Pro', 'ChainBridge Markets',
-    'TokenHarbor', 'DigitalMint Exchange', 'CryptoNest Global',
+    'Binance', 'Coinbase', 'Kraken', 'OKX',
+    'Bybit', 'Gemini', 'KuCoin', 'Huobi', 'Bitfinex', 'Bitstamp',
 ]
+
+# Exchange risk profiles (used by crypto_chain.py and crypto_flow.py)
+EXCHANGE_PROFILES = {
+    'Binance':    {'risk_score': 0.55, 'kyc_level': 'medium', 'jurisdiction': 'Cayman Islands'},
+    'Coinbase':   {'risk_score': 0.15, 'kyc_level': 'high',   'jurisdiction': 'USA'},
+    'Kraken':     {'risk_score': 0.20, 'kyc_level': 'high',   'jurisdiction': 'USA'},
+    'OKX':        {'risk_score': 0.65, 'kyc_level': 'low',    'jurisdiction': 'Seychelles'},
+    'Bybit':      {'risk_score': 0.60, 'kyc_level': 'low',    'jurisdiction': 'UAE'},
+    'Gemini':     {'risk_score': 0.10, 'kyc_level': 'high',   'jurisdiction': 'USA'},
+    'KuCoin':     {'risk_score': 0.70, 'kyc_level': 'low',    'jurisdiction': 'Seychelles'},
+    'Huobi':      {'risk_score': 0.65, 'kyc_level': 'medium', 'jurisdiction': 'Seychelles'},
+    'Bitfinex':   {'risk_score': 0.50, 'kyc_level': 'medium', 'jurisdiction': 'British Virgin Islands'},
+    'Bitstamp':   {'risk_score': 0.15, 'kyc_level': 'high',   'jurisdiction': 'Luxembourg'},
+}
 
 # Behavioral signals
 ROLLING_WINDOW_DAYS = 30

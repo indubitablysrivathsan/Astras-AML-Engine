@@ -24,6 +24,7 @@ from config import (
     SUPPORTED_CRYPTO, CRYPTO_EXCHANGES,
 )
 from services.data_generation.rates import load_rates, get_usd_rate
+from services.data_generation.crypto_chain import generate_chain_for_customer
 
 fake = Faker('en_US')
 np.random.seed(42)
@@ -924,12 +925,19 @@ def create_alerts(customers_df, transactions_df):
     return pd.DataFrame(alerts)
 
 
-def save_to_database(customers_df, transactions_df, alerts_df, db_path=DB_PATH):
+def save_to_database(customers_df, transactions_df, alerts_df,
+                     chain_df=None, wallets_df=None, db_path=DB_PATH):
     print(f"\nSaving to {db_path}")
     conn = sqlite3.connect(db_path)
     customers_df.to_sql('customers', conn, if_exists='replace', index=False)
     transactions_df.to_sql('transactions', conn, if_exists='replace', index=False)
     alerts_df.to_sql('alerts', conn, if_exists='replace', index=False)
+    if chain_df is not None and not chain_df.empty:
+        chain_df.to_sql('crypto_chain_txns', conn, if_exists='replace', index=False)
+        print(f"  Crypto chain txns: {len(chain_df):,}")
+    if wallets_df is not None and not wallets_df.empty:
+        wallets_df.to_sql('crypto_wallets', conn, if_exists='replace', index=False)
+        print(f"  Crypto wallets:    {len(wallets_df):,}")
     conn.close()
     print(f"  Customers: {len(customers_df):,} | Transactions: {len(transactions_df):,} | Alerts: {len(alerts_df):,}")
 
@@ -947,12 +955,37 @@ def run():
     transactions_df['transaction_id'] = range(len(transactions_df))
     transactions_df = transactions_df.sort_values(['customer_id', 'transaction_date'])
     alerts_df = create_alerts(customers_df, transactions_df)
-    save_to_database(customers_df, transactions_df, alerts_df)
+
+    # ── Blockchain emulation for crypto_laundering customers ──────────────────
+    print("\nGenerating on-chain data for crypto_laundering customers...")
+    crypto_customers = customers_df[
+        customers_df['is_suspicious'] & (customers_df['typology'] == 'crypto_laundering')
+    ]
+    all_chains   = []
+    all_wallets  = []
+    for _, cust in crypto_customers.iterrows():
+        cid   = int(cust['customer_id'])
+        ctxns = transactions_df[transactions_df['customer_id'] == cid]
+        chain_df_c, wallets_df_c = generate_chain_for_customer(cust.to_dict(), ctxns)
+        if not chain_df_c.empty:
+            all_chains.append(chain_df_c)
+        if not wallets_df_c.empty:
+            all_wallets.append(wallets_df_c)
+
+    chain_df   = pd.concat(all_chains,  ignore_index=True) if all_chains  else pd.DataFrame()
+    wallets_df = pd.concat(all_wallets, ignore_index=True) if all_wallets else pd.DataFrame()
+    print(f"  Chain txns: {len(chain_df):,}  |  Wallets: {len(wallets_df):,}")
+
+    save_to_database(customers_df, transactions_df, alerts_df, chain_df, wallets_df)
 
     os.makedirs(os.path.join(DATA_DIR, 'generated'), exist_ok=True)
     customers_df.to_csv(os.path.join(DATA_DIR, 'generated', 'customers.csv'), index=False)
     transactions_df.to_csv(os.path.join(DATA_DIR, 'generated', 'transactions.csv'), index=False)
     alerts_df.to_csv(os.path.join(DATA_DIR, 'generated', 'alerts.csv'), index=False)
+    if not chain_df.empty:
+        chain_df.to_csv(os.path.join(DATA_DIR, 'generated', 'crypto_chain_txns.csv'), index=False)
+    if not wallets_df.empty:
+        wallets_df.to_csv(os.path.join(DATA_DIR, 'generated', 'crypto_wallets.csv'), index=False)
 
     print(f"\nTotal customers: {len(customers_df):,}")
     print(f"  Suspicious: {customers_df['is_suspicious'].sum():,}")
