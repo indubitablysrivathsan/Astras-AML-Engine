@@ -414,9 +414,9 @@ def create_investigation_agent(
     llm = ChatOllama(
         model          = llm_model,
         temperature    = 0.0,
-        num_predict    = 1000,   # keep answers focused; prevents runaway generation loops
+        num_predict    = 2000,   # enough for tool result + summary; repeat_penalty handles loops
         keep_alive     = -1,
-        repeat_penalty = 1.3,   # same as Mistral setting — stops repetition spirals
+        repeat_penalty = 1.3,
     )
     agent = create_react_agent(
         llm,
@@ -449,7 +449,7 @@ def run_agent_turn(agent, user_message: str, history: list):
 
     final_response = ""
     tool_calls_made = []
-    _MAX_STEPS = 6   # hard cap — prevents infinite ReAct loops on Mistral 7B
+    _MAX_STEPS = 12  # tool call + result + final answer = ~3 steps; 12 gives headroom
 
     try:
         for chunk in agent.stream(
