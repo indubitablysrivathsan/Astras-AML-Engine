@@ -58,6 +58,18 @@ def load_all_data():
     monitor_path = os.path.join(base, 'monitoring_states.csv')
     monitor_df = pd.read_csv(monitor_path) if os.path.exists(monitor_path) else None
 
+    # Warm up LLM — load model into VRAM once at startup, keep alive permanently.
+    # This eliminates the cold-start delay on the first Investigation query.
+    try:
+        import requests
+        requests.post(
+            "http://localhost:11434/api/generate",
+            json={"model": LLM_MODEL, "keep_alive": -1},
+            timeout=5,
+        )
+    except Exception:
+        pass  # Ollama not running — fine, Investigation page handles this gracefully
+
     return customers, transactions, alerts, features_df, explainer, feature_cols, bsi_df, monitor_df
 
 
@@ -537,67 +549,108 @@ elif page == "Generate SAR":
 # ══════════════════════════════════════════════════════════════════════
 elif page == "Investigation":
     st.title("AI Alert Investigation")
-    st.caption("Ask questions about specific alerts directly to the AI Assistant.")
+    st.caption("Context-aware AML investigation assistant. Scoped strictly to the selected alert.")
 
-    c1, c2 = st.columns([1, 2])
-    with c1:
-        alert_id = st.number_input("Select Alert ID", min_value=0,
-                                   max_value=len(alerts_df) - 1, value=0, key="inv_alert_select")
+    # ── Alert selector ────────────────────────────────────────────────
+    alert_id = st.selectbox(
+        "Select Alert",
+        alerts_df['alert_id'].tolist(),
+        format_func=lambda x: (
+            f"Alert {x} — "
+            f"{alerts_df[alerts_df['alert_id']==x].iloc[0]['alert_type'].replace('_',' ').title()} | "
+            f"{alerts_df[alerts_df['alert_id']==x].iloc[0]['severity'].title()} | "
+            f"${alerts_df[alerts_df['alert_id']==x].iloc[0]['total_amount']:,.0f}"
+        ),
+        key="inv_alert_select",
+    )
 
-    alert_row = alerts_df[alerts_df['alert_id'] == alert_id]
-    if len(alert_row) > 0:
-        ar = alert_row.iloc[0]
-        cust = customers_df[customers_df['customer_id'] == ar['customer_id']]
-        with c2:
-            if len(cust) > 0:
-                cr = cust.iloc[0]
-                st.markdown(f"**{cr['name']}** | {ar['alert_type'].replace('_',' ').title()} | "
-                            f"${ar['total_amount']:,.2f}")
+    ar = alerts_df[alerts_df['alert_id'] == alert_id].iloc[0]
+    cust_row = customers_df[customers_df['customer_id'] == ar['customer_id']]
+    if len(cust_row) > 0:
+        cr = cust_row.iloc[0]
+        st.markdown(
+            f"**{cr['name']}** &nbsp;|&nbsp; {cr['occupation']} &nbsp;|&nbsp; "
+            f"Risk: **{cr['risk_rating'].title()}** &nbsp;|&nbsp; "
+            f"Volume: **${ar['total_amount']:,.2f}**",
+            unsafe_allow_html=True,
+        )
 
-    # Check LLM availability
+    # ── LLM availability check ────────────────────────────────────────
     from services.sar.sar_fallback import is_ollama_available
-    ollama_up = is_ollama_available()
-    if not ollama_up:
+    if not is_ollama_available():
         st.error("Ollama not detected. Start Ollama with `ollama serve` to use the Investigation Chatbot.")
         st.stop()
 
     st.markdown("---")
-    
-    # Initialize session state for chat history
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    
-    # Check if we switched alerts; if so, clear chat history
-    if "current_inv_alert" not in st.session_state or st.session_state.current_inv_alert != alert_id:
-        st.session_state.messages = []
-        st.session_state.current_inv_alert = alert_id
 
-    # Display chat messages from history on app rerun
-    for message in st.session_state.messages:
+    # ── Alert-scoped session state ────────────────────────────────────
+    # Each alert_id gets its own isolated session object.
+    # Switching alerts preserves prior conversations — analyst can navigate back.
+    # system_prompt is built once per alert and cached here (expensive: DB + SHAP).
+    if "alert_sessions" not in st.session_state:
+        st.session_state.alert_sessions = {}
+
+    if alert_id not in st.session_state.alert_sessions:
+        st.session_state.alert_sessions[alert_id] = {
+            "messages": [],
+            "system_prompt": None,   # built lazily on first send
+        }
+
+    session = st.session_state.alert_sessions[alert_id]
+
+    # ── Download transactions button ──────────────────────────────────
+    from services.investigation_tools import get_alert_transactions
+    with st.expander("Download transactions for this alert"):
+        if st.button("Prepare CSV", key=f"dl_prep_{alert_id}"):
+            txn_export = get_alert_transactions(alert_id, limit=10000)
+            csv_bytes = txn_export.to_csv(index=False).encode()
+            st.download_button(
+                label=f"Download transactions_{alert_id}.csv",
+                data=csv_bytes,
+                file_name=f"transactions_{alert_id}.csv",
+                mime="text/csv",
+                key=f"dl_btn_{alert_id}",
+            )
+
+    st.markdown("---")
+
+    # ── Chat history display ──────────────────────────────────────────
+    for message in session["messages"]:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Accept user input
+    # ── User input ────────────────────────────────────────────────────
     if prompt := st.chat_input("Ask about this alert..."):
-        # Display user message in chat message container
         with st.chat_message("user"):
             st.markdown(prompt)
-        # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        session["messages"].append({"role": "user", "content": prompt})
 
-        # Display assistant response in chat message container
         with st.chat_message("assistant"):
             from langchain_ollama import OllamaLLM
-            llm = OllamaLLM(model=LLM_MODEL, temperature=0.1, num_predict=1000)
-            from services.chatbot import stream_investigation_response
-            
+            from services.chatbot import build_system_prompt, stream_investigation_response
+
+            # Build system prompt once per alert (cached in session state)
+            if session["system_prompt"] is None:
+                with st.spinner("Loading alert context..."):
+                    # Pull counterfactual if already computed (from Counterfactual page cache)
+                    cf_data = st.session_state.get(f"cf_cache_{alert_id}")
+                    session["system_prompt"] = build_system_prompt(
+                        alert_id, features_df, explainer, feature_cols, bsi_df,
+                        counterfactual=cf_data,
+                    )
+
+            llm = OllamaLLM(model=LLM_MODEL, temperature=0.0, num_predict=1000,
+                            keep_alive=-1)
+
             stream = stream_investigation_response(
-                llm, alert_id, prompt, st.session_state.messages[:-1], 
-                features_df, explainer, feature_cols, bsi_df
+                llm,
+                session["system_prompt"],
+                prompt,
+                session["messages"][:-1],   # history excludes current user turn
             )
             response = st.write_stream(stream)
-            
-        st.session_state.messages.append({"role": "assistant", "content": response})
+
+        session["messages"].append({"role": "assistant", "content": response})
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -607,78 +660,90 @@ elif page == "Counterfactual Analysis":
     st.title("Counterfactual SAR Simulation")
     st.caption("What would need to change to flip the SAR decision?")
 
-    alert_id = st.selectbox("Select Alert",
-                            alerts_df['alert_id'].tolist(),
-                            format_func=lambda x: f"Alert {x} - {alerts_df[alerts_df['alert_id']==x].iloc[0]['alert_type']}")
+    alert_id = st.selectbox(
+        "Select Alert",
+        alerts_df['alert_id'].tolist(),
+        format_func=lambda x: f"Alert {x} — {alerts_df[alerts_df['alert_id']==x].iloc[0]['alert_type'].replace('_',' ').title()}",
+        key="cf_alert_select",
+    )
 
     alert_row = alerts_df[alerts_df['alert_id'] == alert_id].iloc[0]
     cid = alert_row['customer_id']
 
-    if st.button("Run Counterfactual Analysis", type="primary"):
+    # Auto-compute counterfactual — cached per alert_id in session state so it
+    # runs once per alert, not on every Streamlit rerun.
+    # Result is also stored in st.session_state under cf_cache_{alert_id} so the
+    # Investigation chatbot can pick it up as Tier-1 context without recomputing.
+    @st.cache_data(show_spinner=False)
+    def _compute_cf(customer_id, _features_df, _feature_cols):
         from services.sar.counterfactual import generate_counterfactual
+        _model = joblib.load(os.path.join(MODELS_DIR, 'risk_classifier.pkl'))
+        return generate_counterfactual(customer_id, _features_df, _model, _feature_cols)
 
-        model = joblib.load(os.path.join(MODELS_DIR, 'risk_classifier.pkl'))
-        cf = generate_counterfactual(cid, features_df, model, feature_cols)
+    with st.spinner("Computing counterfactual analysis..."):
+        cf = _compute_cf(cid, features_df, feature_cols)
 
-        if cf is None:
-            st.error("No data available")
-        else:
-            # Summary metrics
-            sc1, sc2, sc3 = st.columns(3)
-            sc1.metric("Current Risk", f"{cf['current_risk_score']:.1%}")
-            sc2.metric("SAR Triggered", "YES" if cf['sar_triggered'] else "NO")
-            sc3.metric("Barely Crossed", "YES" if cf['summary']['barely_crossed_threshold'] else "NO")
+    # Share result with Investigation chatbot via session state
+    st.session_state[f"cf_cache_{alert_id}"] = cf
 
-            st.markdown("---")
+    if cf is None:
+        st.error("No feature data available for this alert.")
+    else:
+        # Summary metrics
+        sc1, sc2, sc3 = st.columns(3)
+        sc1.metric("Current Risk", f"{cf['current_risk_score']:.1%}")
+        sc2.metric("SAR Triggered", "YES" if cf['sar_triggered'] else "NO")
+        sc3.metric("Barely Crossed", "YES" if cf['summary']['barely_crossed_threshold'] else "NO")
 
-            # Current vs Counterfactual visualization
-            st.subheader("Dimension Impact Analysis")
+        st.markdown("---")
 
-            dims = cf['dimension_impacts']
-            dim_names = [d['dimension'] for d in dims]
-            contributions = [d['contribution_pct'] for d in dims]
-            cf_risks = [d['risk_with_normalization'] for d in dims]
-            flips = [d['would_flip_decision'] for d in dims]
+        # Dimension Impact chart
+        st.subheader("Dimension Impact Analysis")
 
-            colors = ['#ef4444' if f else '#3b82f6' for f in flips]
+        dims = cf['dimension_impacts']
+        dim_names    = [d['dimension'] for d in dims]
+        contributions = [d['contribution_pct'] for d in dims]
+        flips        = [d['would_flip_decision'] for d in dims]
+        colors       = ['#ef4444' if f else '#3b82f6' for f in flips]
 
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                y=dim_names[::-1],
-                x=contributions[::-1],
-                orientation='h',
-                marker_color=colors[::-1],
-                text=[f"{c:.1f}%" for c in contributions[::-1]],
-                textposition='outside',
-            ))
-            fig.update_layout(
-                height=400,
-                xaxis_title="Risk Contribution (%)",
-                margin=dict(t=10, b=10, l=200),
-            )
-            st.plotly_chart(fig, use_container_width=True)
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            y=dim_names[::-1],
+            x=contributions[::-1],
+            orientation='h',
+            marker_color=colors[::-1],
+            text=[f"{c:.1f}%" for c in contributions[::-1]],
+            textposition='outside',
+        ))
+        fig.update_layout(
+            height=400,
+            xaxis_title="Risk Contribution (%)",
+            margin=dict(t=10, b=10, l=200),
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-            # Dimension details
-            st.subheader("Detailed Counterfactuals")
-            for d in dims:
-                status = "🔴 WOULD FLIP DECISION" if d['would_flip_decision'] else ""
-                with st.expander(f"{d['dimension']} ({d['contribution_pct']:.1f}% of risk) {status}"):
-                    st.write(f"**Risk if normalized:** {d['risk_with_normalization']:.2%} "
-                             f"(reduction: {d['risk_reduction']:.2%})")
-                    dc1, dc2 = st.columns(2)
-                    with dc1:
-                        st.write("**Current Values**")
-                        for f, v in d['current_values'].items():
-                            st.write(f"- {f}: {v:.4f}")
-                    with dc2:
-                        st.write("**Counterfactual (Normal)**")
-                        for f, v in d['counterfactual_values'].items():
-                            st.write(f"- {f}: {v:.4f}")
+        # Dimension details
+        st.subheader("Detailed Counterfactuals")
+        for d in dims:
+            status = "🔴 WOULD FLIP DECISION" if d['would_flip_decision'] else ""
+            with st.expander(f"{d['dimension']} ({d['contribution_pct']:.1f}% of risk) {status}"):
+                st.write(f"**Risk if normalized:** {d['risk_with_normalization']:.2%} "
+                         f"(reduction: {d['risk_reduction']:.2%})")
+                dc1, dc2 = st.columns(2)
+                with dc1:
+                    st.write("**Current Values**")
+                    for feat, val in d['current_values'].items():
+                        st.write(f"- {feat}: {val:.4f}")
+                with dc2:
+                    st.write("**Counterfactual (Normal)**")
+                    for feat, val in d['counterfactual_values'].items():
+                        st.write(f"- {feat}: {val:.4f}")
 
-            # Summary
-            st.markdown("---")
-            st.info(f"**Top risk drivers:** {', '.join(cf['summary']['top_risk_dimensions'])} — "
-                    f"these explain {cf['summary']['top_2_contribution_pct']:.0f}% of the total risk.")
+        st.markdown("---")
+        st.info(
+            f"**Top risk drivers:** {', '.join(cf['summary']['top_risk_dimensions'])} — "
+            f"these explain {cf['summary']['top_2_contribution_pct']:.0f}% of total risk."
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════
