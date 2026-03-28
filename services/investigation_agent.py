@@ -306,10 +306,14 @@ investigation assistant embedded in a regulated financial crime detection system
 ▌ TRANSACTION SUMMARY
 {txn_summary}
 
+▌ FIAT-TO-CRYPTO FLOW RECONSTRUCTION
+{crypto_flow_text}
+
 ══════════════════════════════════════════════════════
-  Use the available tools to retrieve detailed transaction data,
-  counterparty history, date-range slices, and crypto flow analysis.
-  Do not guess — query first.
+  Use the available tools ONLY to retrieve specific transaction
+  details not already shown above (filter by country/method/date/
+  counterparty). NEVER invent data. If something is not in this
+  context or retrievable by a tool, say "not available."
 ══════════════════════════════════════════════════════
 [/INST]"""
 
@@ -346,6 +350,39 @@ def build_agent_system_prompt(
     prior_alerts = get_previous_alerts(int(alert['customer_id']), alert_id, db_path)
     txn_summary  = get_transaction_summary(alert_id, db_path)
 
+    # Pre-load crypto flow so the model reads facts, not hallucinates them
+    try:
+        from services.crypto_flow import reconstruct_crypto_flow
+        flow = reconstruct_crypto_flow(int(alert['customer_id']), db_path)
+        crypto_flow_text = flow['narrative']
+        if flow.get('fiat_links'):
+            lines = []
+            for lnk in flow['fiat_links']:
+                conf  = lnk['confidence']
+                asset = lnk.get('crypto_asset', '')
+                c_amt = lnk.get('crypto_amount', 0)
+                c_usd = lnk.get('crypto_usd', 0)
+                exch  = lnk.get('exchange', '')
+                if conf == 'UNLINKED':
+                    lines.append(f"  • {lnk['crypto_date']} {c_amt:.4f} {asset} (≈${c_usd:,.2f}) via {exch} — UNLINKED")
+                else:
+                    lines.append(
+                        f"  • {lnk['crypto_date']} {c_amt:.4f} {asset} (≈${c_usd:,.2f}) via {exch} [{conf}]\n"
+                        f"    ← {lnk['fiat_date']} {lnk['fiat_amount']:,.2f} {lnk['fiat_currency']} "
+                        f"from {lnk['fiat_counterparty']} [{lnk['fiat_source_country']}]"
+                    )
+            crypto_flow_text += "\n" + "\n".join(lines)
+        cs = flow.get('chain_summary', {})
+        if cs:
+            crypto_flow_text += (
+                f"\nOn-chain: {cs.get('total_hops',0)} hops | "
+                f"{cs.get('unique_wallets',0)} wallets | "
+                f"mixer hops: {cs.get('mixer_hops',0)} | "
+                f"patterns: {', '.join(cs.get('patterns_used',[]))}"
+            )
+    except Exception:
+        crypto_flow_text = "Fiat-to-crypto flow data not available for this alert."
+
     return _AGENT_SYSTEM_TEMPLATE.format(
         alert_id          = alert_id,
         customer_name     = customer['name'],
@@ -359,6 +396,7 @@ def build_agent_system_prompt(
         behavioral_context= behavioral_ctx,
         prior_alerts      = prior_alerts,
         txn_summary       = txn_summary,
+        crypto_flow_text  = crypto_flow_text,
     )
 
 
@@ -373,12 +411,16 @@ def create_investigation_agent(
     Build a LangGraph ReAct agent scoped to a single alert.
     Returns the compiled agent graph.
     """
-    tools = _make_tools(alert_id, customer_id, db_path)
-    llm   = ChatOllama(
-        model        = llm_model,
-        temperature  = 0.0,
-        num_predict  = 3000,
-        keep_alive   = -1,
+    # get_crypto_flow is pre-loaded in the system prompt — exclude it from tools
+    # to prevent the model from hallucinating when it tries to call it
+    all_tools = _make_tools(alert_id, customer_id, db_path)
+    tools = [t for t in all_tools if t.name != 'get_crypto_flow']
+
+    llm = ChatOllama(
+        model          = llm_model,
+        temperature    = 0.0,
+        num_predict    = 2000,
+        keep_alive     = -1,
         repeat_penalty = 1.3,
     )
     agent = create_react_agent(
@@ -412,28 +454,41 @@ def run_agent_turn(agent, user_message: str, history: list):
 
     final_response = ""
     tool_calls_made = []
+    _MAX_STEPS = 6   # hard cap — prevents infinite ReAct loops on Mistral 7B
 
-    # stream() yields state dicts at each graph node transition
-    for chunk in agent.stream({"messages": messages}, stream_mode="values"):
-        last_msg = chunk["messages"][-1]
+    try:
+        for chunk in agent.stream(
+            {"messages": messages},
+            stream_mode="values",
+            config={"recursion_limit": _MAX_STEPS},
+        ):
+            last_msg = chunk["messages"][-1]
 
-        # Tool result arriving — capture for summary
-        if isinstance(last_msg, ToolMessage):
-            tool_calls_made.append(last_msg.name if hasattr(last_msg, 'name') else "tool")
+            # Tool result — record tool name for the summary prefix
+            if isinstance(last_msg, ToolMessage):
+                name = getattr(last_msg, 'name', None) or getattr(last_msg, 'tool_call_id', 'tool')
+                tool_calls_made.append(name)
 
-        # AI message — may be intermediate (has tool_calls) or final (no tool_calls)
-        elif isinstance(last_msg, AIMessage):
-            has_tool_calls = bool(getattr(last_msg, 'tool_calls', None))
-            if not has_tool_calls and last_msg.content:
-                # This is the final answer
-                final_response = last_msg.content
+            # AI message — skip if it has pending tool calls (intermediate step)
+            elif isinstance(last_msg, AIMessage):
+                has_pending = bool(getattr(last_msg, 'tool_calls', None))
+                content = last_msg.content or ""
+                # Also skip if content looks like a raw tool-call JSON blob
+                is_json_blob = content.strip().startswith('[{"name"') or content.strip().startswith('{"name"')
+                if not has_pending and content and not is_json_blob:
+                    final_response = content
 
-    # Yield tool call summary first (as a dim prefix)
+    except Exception as e:
+        if "recursion" in str(e).lower() or "graphrecursion" in type(e).__name__.lower():
+            final_response = "_(Agent reached maximum reasoning steps without a final answer. Try a more specific question.)_"
+        else:
+            raise
+
+    # Yield tool-use summary as a subtle prefix
     if tool_calls_made:
-        unique_tools = list(dict.fromkeys(tool_calls_made))  # preserve order, dedupe
+        unique_tools = list(dict.fromkeys(tool_calls_made))
         yield f"*[Queried: {', '.join(unique_tools)}]*\n\n"
 
-    # Yield the final answer
     if final_response:
         yield final_response
     else:
