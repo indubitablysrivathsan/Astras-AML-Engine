@@ -1,0 +1,66 @@
+{
+  "alert_id": 2,
+  "narrative": "INTRODUCTION\nThis Suspicious Activity Report (SAR) is filed regarding the account of Jeremy Oliver, who has been identified through automated behavioral analysis as engaging in activity consistent with Round Tripping. The account was flagged with a risk score of 99.5% by the institution's AI-assisted monitoring system. The Behavioral Stability Index (BSI) for this account is 98.0/100, indicating stable behavioral drift.\n\nWHO\nJeremy Oliver is a individual customer with SSN 729-35-0019. The subject's stated occupation is Contractor, with a reported annual income of $154,264.37. The account was opened on 2021-02-13 and is located at 09279 Thompson Drive Suite 620, Whiteton, KS 83417, Turnerbury, OR 73150. The account carries a risk rating of High.\n\nWHAT\nBetween 2025-01-01 and 2025-05-27, the account processed 9 transactions totaling $384,069.64. This included 3 deposits totaling $196,851.73 and 6 withdrawals totaling $187,217.91, resulting in a net flow of $9,633.82. Of these transactions, 0 were cash transactions totaling $0.00, and 4 were wire transfers. 4 transactions involved international counterparties across 4 countries, including Panama, British Virgin Islands, Luxembourg, Singapore.\n\nWHEN\nThe suspicious activity commenced on 2025-01-01 and continued through 2025-05-27, spanning a period of 146 days. The average transaction frequency was approximately 0.4 transactions per week.\n\nWHERE\nTransactions were conducted across 6 distinct locations. International jurisdictions involved include Panama, British Virgin Islands, Luxembourg, Singapore.\n\nWHY SUSPICIOUS\nThe account activity is consistent with Round Tripping based on multiple behavioral indicators. Key risk drivers identified by SHAP analysis include: Deposit Withdrawal Ratio (impact: +3.889), Num Withdrawals (impact: +1.413), Total Volume (impact: +0.541). The transaction patterns deviate significantly from expected behavior for a customer with the subject's profile and stated income. The volume-to-income ratio of 2.5x indicates transaction activity disproportionate to the subject's reported financial capacity. The Behavioral Stability Index (BSI) for this account is 98.0/100, indicating stable behavioral drift.\n\nHOW\nThe subject appears to be utilizing the account to cycle funds through foreign entities to disguise their origin, with 4 international transactions creating an appearance of legitimate investment returns. This pattern was detected through the institution's behavioral intelligence system, which monitors entropy drift, temporal burst patterns, counterparty network expansion, and amount distribution anomalies.\n\nCONCLUSION\nBased on the behavioral analysis, risk scoring (99.5%), and pattern recognition described above, this activity is being reported as suspected Round Tripping. The institution's AI-assisted system generated this narrative for analyst review. No autonomous filing has occurred — this SAR is submitted under human oversight and approval. The account will continue to be monitored under enhanced surveillance protocols.",
+  "audit_trail": {
+    "alert_id": 2,
+    "generation_timestamp": "2026-03-27T23:21:14.501301",
+    "model": "template-fallback (Ollama unavailable)",
+    "temperature": 0.0,
+    "customer_id": 30,
+    "customer_name": "Jeremy Oliver",
+    "num_transactions_analyzed": 9,
+    "transaction_date_range": "2025-01-01 00:00:00 to 2025-05-27 00:00:00",
+    "risk_score": 0.9953042,
+    "typology_detected": "round_tripping",
+    "shap_top_features": [
+      {
+        "feature": "deposit_withdrawal_ratio",
+        "shap_value": 3.8892405033111572
+      },
+      {
+        "feature": "num_withdrawals",
+        "shap_value": 1.412607192993164
+      },
+      {
+        "feature": "total_volume",
+        "shap_value": 0.5409099459648132
+      },
+      {
+        "feature": "num_unique_counterparties",
+        "shap_value": 0.40346550941467285
+      },
+      {
+        "feature": "total_transactions",
+        "shap_value": 0.3089189827442169
+      }
+    ],
+    "templates_retrieved": [],
+    "generation_params": {
+      "temperature": 0.0,
+      "max_tokens": 0
+    },
+    "narrative": "INTRODUCTION\nThis Suspicious Activity Report (SAR) is filed regarding the account of Jeremy Oliver, who has been identified through automated behavioral analysis as engaging in activity consistent with Round Tripping. The account was flagged with a risk score of 99.5% by the institution's AI-assisted monitoring system. The Behavioral Stability Index (BSI) for this account is 98.0/100, indicating stable behavioral drift.\n\nWHO\nJeremy Oliver is a individual customer with SSN 729-35-0019. The subject's stated occupation is Contractor, with a reported annual income of $154,264.37. The account was opened on 2021-02-13 and is located at 09279 Thompson Drive Suite 620, Whiteton, KS 83417, Turnerbury, OR 73150. The account carries a risk rating of High.\n\nWHAT\nBetween 2025-01-01 and 2025-05-27, the account processed 9 transactions totaling $384,069.64. This included 3 deposits totaling $196,851.73 and 6 withdrawals totaling $187,217.91, resulting in a net flow of $9,633.82. Of these transactions, 0 were cash transactions totaling $0.00, and 4 were wire transfers. 4 transactions involved international counterparties across 4 countries, including Panama, British Virgin Islands, Luxembourg, Singapore.\n\nWHEN\nThe suspicious activity commenced on 2025-01-01 and continued through 2025-05-27, spanning a period of 146 days. The average transaction frequency was approximately 0.4 transactions per week.\n\nWHERE\nTransactions were conducted across 6 distinct locations. International jurisdictions involved include Panama, British Virgin Islands, Luxembourg, Singapore.\n\nWHY SUSPICIOUS\nThe account activity is consistent with Round Tripping based on multiple behavioral indicators. Key risk drivers identified by SHAP analysis include: Deposit Withdrawal Ratio (impact: +3.889), Num Withdrawals (impact: +1.413), Total Volume (impact: +0.541). The transaction patterns deviate significantly from expected behavior for a customer with the subject's profile and stated income. The volume-to-income ratio of 2.5x indicates transaction activity disproportionate to the subject's reported financial capacity. The Behavioral Stability Index (BSI) for this account is 98.0/100, indicating stable behavioral drift.\n\nHOW\nThe subject appears to be utilizing the account to cycle funds through foreign entities to disguise their origin, with 4 international transactions creating an appearance of legitimate investment returns. This pattern was detected through the institution's behavioral intelligence system, which monitors entropy drift, temporal burst patterns, counterparty network expansion, and amount distribution anomalies.\n\nCONCLUSION\nBased on the behavioral analysis, risk scoring (99.5%), and pattern recognition described above, this activity is being reported as suspected Round Tripping. The institution's AI-assisted system generated this narrative for analyst review. No autonomous filing has occurred — this SAR is submitted under human oversight and approval. The account will continue to be monitored under enhanced surveillance protocols.",
+    "narrative_word_count": 412,
+    "bsi_score": 98.0,
+    "drift_level": "stable",
+    "status": "draft",
+    "reviewed_by": null,
+    "approved_by": null,
+    "filed_date": null
+  },
+  "compliance_check": {
+    "compliant": true,
+    "has_all_sections": true,
+    "sections_found": 8,
+    "sections_total": 8,
+    "missing_sections": [],
+    "word_count": 412,
+    "word_count_ok": true,
+    "has_specific_amounts": true,
+    "has_specific_dates": true,
+    "has_behavioral_reference": true,
+    "has_counterparty_info": true,
+    "has_risk_score": true
+  },
+  "generated_at": "2026-03-27T23:21:14.502654"
+}

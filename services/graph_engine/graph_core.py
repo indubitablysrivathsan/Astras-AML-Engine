@@ -221,6 +221,11 @@ def compute_graph_signals(customer_id, transactions_df, G=None,pagerank=None):
     }
 
 def compute_pagerank_score(G, customer_id, pagerank_dict):
+    if pagerank_dict is None:
+        try:
+            pagerank_dict = nx.pagerank(G, weight='weight')
+        except Exception:
+            pagerank_dict = {}
     node = str(customer_id)
     return {
         'pagerank_score': float(pagerank_dict.get(node, 0.0))

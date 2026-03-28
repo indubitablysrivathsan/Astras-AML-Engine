@@ -1,0 +1,66 @@
+{
+  "alert_id": 129,
+  "narrative": "INTRODUCTION:\nThis Suspicious Activity Report (SAR) pertains to Stephen Rodriguez, an individual freelance developer residing at PSC 1965, Box 5519, APO AP 22440, Lake Emilybury, NH 23242. The account in question was opened on May 17th, 2020, and has a medium risk rating.\n\nWHO:\nStephen Rodriguez is the subject of this SAR. He is an individual with an annual income of $153,404.85, primarily identified as a freelance developer.\n\nWHAT:\nOver the period from January 1st, 2025 to December 23rd, 2025, there have been 105 transactions involving Stephen Rodriguez's account. These transactions include 41 deposits totaling $2,799,391.65 and 64 withdrawals totaling $1,746,468.26, resulting in a net flow of $1,052,923.39. Notably, there were no cash transactions during this period. Additionally, 65 international transactions occurred across four countries: Germany, India, UK, and Japan.\n\nWHEN:\nThe suspicious activity was observed between January 1st, 2025, and December 23rd, 2025. The most significant transactions occurred on December 23rd, 2025, with a deposit of $17,590.53 via wire from Hancock LLC in Germany.\n\nWHERE:\nThe majority of the transactions took place within the United States; however, international transactions were conducted with counterparties in Germany, India, UK, and Japan.\n\nWHY SUSPICIOUS:\nThe behavioral intelligence analysis indicates a medium severity alert (Alert ID: 129, Alert Type: Layering) with a risk score of 12.74%. The top risk drivers include a high deposit-withdrawal ratio, a large number of withdrawals, numerous unique counterparties, and a significant number of international transactions.\n\nThe Behavioral Stability Index (BSI) for Stephen Rodriguez is 83.98/100, indicating a relatively stable behavior. However, the Entropy Drift value of 1.085 suggests an increase in transaction diversity and potential money laundering activities. The Counterparty Expansion Rate of 6.09 indicates a rapid growth in the number of unique counterparties, which is concerning.\n\nHOW:\nThe transactions involve wire transfers to and from various entities, including Hancock LLC (Germany), Perez-Welch (Germany), Johnson-Key (India), Petty Inc (UK), Alexander PLC (USA), Olson-Wilson (UK), Oneal, Singh and Johnson (Germany), Coleman, Pacheco and Johns (UK), Moore, Hudson and Blake (Japan), Johnson-Key (India), Shaw PLC (Germany), Herrera, Pratt and Roberts (USA), Navarro, Hall and Wood (Germany), Melendez, Jefferson and Gibson (Germany), Phillips-Jones (Germany), Cunningham, Bates and Walker (India), Mcmillan, Richards and Rodgers (Germany), and others.\n\nCONCLUSION:\nBased on the transaction data, behavioral intelligence findings, and risk rating, it is suspected that Stephen Rodriguez may be involved in layering activities, potentially involving money laundering. The high deposit-withdrawal ratio, large number of withdrawals, numerous unique counterparties, significant international transactions, Entropy Drift, and Counterparty Expansion Rate are indicative of such suspicious behavior. Further investigation is required to confirm these suspicions and determine the nature and extent of any potential money laundering activities.",
+  "audit_trail": {
+    "alert_id": 129,
+    "generation_timestamp": "2026-03-28T15:41:19.809514",
+    "model": "mistral:7b",
+    "temperature": 0.1,
+    "customer_id": 51,
+    "customer_name": "Stephen Rodriguez",
+    "num_transactions_analyzed": 105,
+    "transaction_date_range": "2025-01-01 00:00:00 to 2025-12-23 00:00:00",
+    "risk_score": 0.12738846,
+    "typology_detected": "layering",
+    "shap_top_features": [
+      {
+        "feature": "deposit_withdrawal_ratio",
+        "shap_value": 2.7412240505218506
+      },
+      {
+        "feature": "num_withdrawals",
+        "shap_value": 1.0102896690368652
+      },
+      {
+        "feature": "num_unique_counterparties",
+        "shap_value": 0.313831090927124
+      },
+      {
+        "feature": "avg_transaction_amount",
+        "shap_value": 0.28687843680381775
+      },
+      {
+        "feature": "num_intl_txns",
+        "shap_value": 0.08103551715612411
+      }
+    ],
+    "templates_retrieved": [],
+    "generation_params": {
+      "temperature": 0.1,
+      "max_tokens": 2000
+    },
+    "narrative": "INTRODUCTION:\nThis Suspicious Activity Report (SAR) pertains to Stephen Rodriguez, an individual freelance developer residing at PSC 1965, Box 5519, APO AP 22440, Lake Emilybury, NH 23242. The account in question was opened on May 17th, 2020, and has a medium risk rating.\n\nWHO:\nStephen Rodriguez is the subject of this SAR. He is an individual with an annual income of $153,404.85, primarily identified as a freelance developer.\n\nWHAT:\nOver the period from January 1st, 2025 to December 23rd, 2025, there have been 105 transactions involving Stephen Rodriguez's account. These transactions include 41 deposits totaling $2,799,391.65 and 64 withdrawals totaling $1,746,468.26, resulting in a net flow of $1,052,923.39. Notably, there were no cash transactions during this period. Additionally, 65 international transactions occurred across four countries: Germany, India, UK, and Japan.\n\nWHEN:\nThe suspicious activity was observed between January 1st, 2025, and December 23rd, 2025. The most significant transactions occurred on December 23rd, 2025, with a deposit of $17,590.53 via wire from Hancock LLC in Germany.\n\nWHERE:\nThe majority of the transactions took place within the United States; however, international transactions were conducted with counterparties in Germany, India, UK, and Japan.\n\nWHY SUSPICIOUS:\nThe behavioral intelligence analysis indicates a medium severity alert (Alert ID: 129, Alert Type: Layering) with a risk score of 12.74%. The top risk drivers include a high deposit-withdrawal ratio, a large number of withdrawals, numerous unique counterparties, and a significant number of international transactions.\n\nThe Behavioral Stability Index (BSI) for Stephen Rodriguez is 83.98/100, indicating a relatively stable behavior. However, the Entropy Drift value of 1.085 suggests an increase in transaction diversity and potential money laundering activities. The Counterparty Expansion Rate of 6.09 indicates a rapid growth in the number of unique counterparties, which is concerning.\n\nHOW:\nThe transactions involve wire transfers to and from various entities, including Hancock LLC (Germany), Perez-Welch (Germany), Johnson-Key (India), Petty Inc (UK), Alexander PLC (USA), Olson-Wilson (UK), Oneal, Singh and Johnson (Germany), Coleman, Pacheco and Johns (UK), Moore, Hudson and Blake (Japan), Johnson-Key (India), Shaw PLC (Germany), Herrera, Pratt and Roberts (USA), Navarro, Hall and Wood (Germany), Melendez, Jefferson and Gibson (Germany), Phillips-Jones (Germany), Cunningham, Bates and Walker (India), Mcmillan, Richards and Rodgers (Germany), and others.\n\nCONCLUSION:\nBased on the transaction data, behavioral intelligence findings, and risk rating, it is suspected that Stephen Rodriguez may be involved in layering activities, potentially involving money laundering. The high deposit-withdrawal ratio, large number of withdrawals, numerous unique counterparties, significant international transactions, Entropy Drift, and Counterparty Expansion Rate are indicative of such suspicious behavior. Further investigation is required to confirm these suspicions and determine the nature and extent of any potential money laundering activities.",
+    "narrative_word_count": 439,
+    "status": "draft",
+    "reviewed_by": null,
+    "approved_by": null,
+    "filed_date": null,
+    "bsi_score": 83.98,
+    "drift_level": "stable"
+  },
+  "compliance_check": {
+    "compliant": false,
+    "has_all_sections": true,
+    "sections_found": 8,
+    "sections_total": 8,
+    "missing_sections": [],
+    "word_count": 439,
+    "word_count_ok": true,
+    "has_specific_amounts": true,
+    "has_specific_dates": false,
+    "has_behavioral_reference": true,
+    "has_counterparty_info": true,
+    "has_risk_score": true
+  },
+  "generated_at": "2026-03-28T15:41:19.819457"
+}

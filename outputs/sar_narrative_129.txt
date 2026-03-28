@@ -1,0 +1,30 @@
+SUSPICIOUS ACTIVITY REPORT - NARRATIVE
+Alert ID: 129
+Generated: 2026-03-28 15:41:19
+======================================================================
+
+INTRODUCTION:
+This Suspicious Activity Report (SAR) pertains to Stephen Rodriguez, an individual freelance developer residing at PSC 1965, Box 5519, APO AP 22440, Lake Emilybury, NH 23242. The account in question was opened on May 17th, 2020, and has a medium risk rating.
+
+WHO:
+Stephen Rodriguez is the subject of this SAR. He is an individual with an annual income of $153,404.85, primarily identified as a freelance developer.
+
+WHAT:
+Over the period from January 1st, 2025 to December 23rd, 2025, there have been 105 transactions involving Stephen Rodriguez's account. These transactions include 41 deposits totaling $2,799,391.65 and 64 withdrawals totaling $1,746,468.26, resulting in a net flow of $1,052,923.39. Notably, there were no cash transactions during this period. Additionally, 65 international transactions occurred across four countries: Germany, India, UK, and Japan.
+
+WHEN:
+The suspicious activity was observed between January 1st, 2025, and December 23rd, 2025. The most significant transactions occurred on December 23rd, 2025, with a deposit of $17,590.53 via wire from Hancock LLC in Germany.
+
+WHERE:
+The majority of the transactions took place within the United States; however, international transactions were conducted with counterparties in Germany, India, UK, and Japan.
+
+WHY SUSPICIOUS:
+The behavioral intelligence analysis indicates a medium severity alert (Alert ID: 129, Alert Type: Layering) with a risk score of 12.74%. The top risk drivers include a high deposit-withdrawal ratio, a large number of withdrawals, numerous unique counterparties, and a significant number of international transactions.
+
+The Behavioral Stability Index (BSI) for Stephen Rodriguez is 83.98/100, indicating a relatively stable behavior. However, the Entropy Drift value of 1.085 suggests an increase in transaction diversity and potential money laundering activities. The Counterparty Expansion Rate of 6.09 indicates a rapid growth in the number of unique counterparties, which is concerning.
+
+HOW:
+The transactions involve wire transfers to and from various entities, including Hancock LLC (Germany), Perez-Welch (Germany), Johnson-Key (India), Petty Inc (UK), Alexander PLC (USA), Olson-Wilson (UK), Oneal, Singh and Johnson (Germany), Coleman, Pacheco and Johns (UK), Moore, Hudson and Blake (Japan), Johnson-Key (India), Shaw PLC (Germany), Herrera, Pratt and Roberts (USA), Navarro, Hall and Wood (Germany), Melendez, Jefferson and Gibson (Germany), Phillips-Jones (Germany), Cunningham, Bates and Walker (India), Mcmillan, Richards and Rodgers (Germany), and others.
+
+CONCLUSION:
+Based on the transaction data, behavioral intelligence findings, and risk rating, it is suspected that Stephen Rodriguez may be involved in layering activities, potentially involving money laundering. The high deposit-withdrawal ratio, large number of withdrawals, numerous unique counterparties, significant international transactions, Entropy Drift, and Counterparty Expansion Rate are indicative of such suspicious behavior. Further investigation is required to confirm these suspicions and determine the nature and extent of any potential money laundering activities.
