@@ -156,7 +156,7 @@ def train_meta_classifier(features_df):
     """Train XGBoost meta-classifier over all signal features."""
     print("\nTraining meta-risk classifier...")
 
-    exclude_cols = ['customer_id', 'is_suspicious', 'typology', 'risk_score', 'drift_level']
+    exclude_cols = ['customer_id', 'is_suspicious', 'typology', 'risk_score', 'drift_level', 'num_unique_counterparties'] ##Added num_unique_counterparties
     # Also exclude boolean columns that need conversion
     bool_cols = features_df.select_dtypes(include=['bool']).columns.tolist()
 
@@ -168,8 +168,7 @@ def train_meta_classifier(features_df):
     y = features_df['is_suspicious'].astype(int).values
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+        X, y, test_size=0.2, random_state=42, stratify=y)
 
     model = xgb.XGBClassifier(**XGBOOST_PARAMS)
     model.fit(X_train, y_train)
