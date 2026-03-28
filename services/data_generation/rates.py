@@ -12,6 +12,7 @@ import sys
 import pandas as pd
 import numpy as np
 from datetime import timedelta
+import concurrent.futures
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from config import START_DATE_STR, SIMULATION_DAYS, DATA_DIR, FX_RATES, CRYPTO_RATES_USD
@@ -39,6 +40,11 @@ _sorted_dates: list[str] = []
 
 def _build_rate_table(start: str, end: str) -> pd.DataFrame:
     """Fetch or load cached daily rates for all supported currencies."""
+    # Skip live fetch — use static fallback rates. Run fetch_rates.py separately for live data.
+    if not os.path.exists(CACHE_PATH):
+        print("  [rates] No cache found — using static fallback rates (run fetch_rates.py for live data)")
+        return _static_rate_df(start, end)
+
     if os.path.exists(CACHE_PATH):
         df = pd.read_csv(CACHE_PATH, parse_dates=['date'])
         # Check the cache covers our simulation window
@@ -54,23 +60,32 @@ def _build_rate_table(start: str, end: str) -> pd.DataFrame:
         return _static_rate_df(start, end)
 
     print(f"  [rates] Fetching historical rates from Yahoo Finance ({start} → {end}) …")
+
+    def _fetch(currency, ticker):
+        raw = yf.download(ticker, start=start, end=end, progress=False, auto_adjust=True)
+        if raw.empty:
+            raise ValueError(f"Empty data for {ticker}")
+        close = raw['Close'].copy()
+        close.index = pd.to_datetime(close.index).normalize()
+        close.name = currency
+        return close
+
     frames = []
     for currency, ticker in TICKERS.items():
-        try:
-            raw = yf.download(ticker, start=start, end=end,
-                              progress=False, auto_adjust=True)
-            if raw.empty:
-                raise ValueError(f"Empty data for {ticker}")
-            close = raw['Close'].copy()
-            close.index = pd.to_datetime(close.index).normalize()
-            close.name = currency
-            frames.append(close)
-        except Exception as e:
-            print(f"  [rates] Warning: could not fetch {ticker} ({e}), using static fallback")
-            # Build a flat series using static value
-            idx = pd.date_range(start=start, end=end, freq='D')
-            flat = pd.Series(STATIC_FALLBACK.get(currency, 1.0), index=idx, name=currency)
-            frames.append(flat)
+        idx = pd.date_range(start=start, end=end, freq='D')
+        fallback = pd.Series(STATIC_FALLBACK.get(currency, 1.0), index=idx, name=currency)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_fetch, currency, ticker)
+            try:
+                close = future.result(timeout=15)
+                frames.append(close)
+                print(f"  [rates]   {currency} OK")
+            except concurrent.futures.TimeoutError:
+                print(f"  [rates] Warning: {ticker} timed out after 15s, using static fallback")
+                frames.append(fallback)
+            except Exception as e:
+                print(f"  [rates] Warning: could not fetch {ticker} ({e}), using static fallback")
+                frames.append(fallback)
 
     combined = pd.concat(frames, axis=1)
     combined.index.name = 'date'
