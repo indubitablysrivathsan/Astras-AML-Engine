@@ -607,16 +607,18 @@ elif page == "Investigation":
     st.markdown("---")
 
     # ── Alert-scoped session state ────────────────────────────────────
-    # Each alert_id gets its own isolated session object.
+    # Each alert_id gets its own isolated session: message history + compiled agent.
     # Switching alerts preserves prior conversations — analyst can navigate back.
-    # system_prompt is built once per alert and cached here (expensive: DB + SHAP).
+    # Agent and system_prompt are built once per alert (expensive: DB + SHAP).
     if "alert_sessions" not in st.session_state:
         st.session_state.alert_sessions = {}
 
     if alert_id not in st.session_state.alert_sessions:
         st.session_state.alert_sessions[alert_id] = {
-            "messages": [],
+            "messages":      [],
             "system_prompt": None,   # built lazily on first send
+            "agent":         None,   # LangGraph agent, built lazily
+            "customer_id":   int(alerts_df[alerts_df['alert_id'] == alert_id].iloc[0]['customer_id']),
         }
 
     session = st.session_state.alert_sessions[alert_id]
@@ -643,40 +645,43 @@ elif page == "Investigation":
             st.markdown(message["content"])
 
     # ── User input ────────────────────────────────────────────────────
-    if prompt := st.chat_input("Ask about this alert..."):
+    if prompt := st.chat_input("Ask about this alert... (I can query transactions, crypto flow, counterparties)"):
         with st.chat_message("user"):
             st.markdown(prompt)
         session["messages"].append({"role": "user", "content": prompt})
 
         with st.chat_message("assistant"):
-            from langchain_ollama import OllamaLLM
-            from services.chatbot import build_system_prompt, stream_investigation_response
-
-            # Build system prompt once per alert (cached in session state)
-            if session["system_prompt"] is None:
-                with st.spinner("Loading alert context..."):
-                    cf_data = st.session_state.get(f"cf_cache_{alert_id}")
-                    session["system_prompt"] = build_system_prompt(
-                        alert_id, features_df, explainer, feature_cols, bsi_df,
-                        counterfactual=cf_data,
-                    )
-
-            llm = OllamaLLM(model=LLM_MODEL, temperature=0.0, num_predict=2500,
-                            keep_alive=-1, repeat_penalty=1.3)
-
-            stream = stream_investigation_response(
-                llm,
-                session["system_prompt"],
-                prompt,
-                session["messages"][:-1],   # history excludes current user turn
+            from services.investigation_agent import (
+                build_agent_system_prompt,
+                create_investigation_agent,
+                run_agent_turn,
             )
 
-            # Guard: ensure response is always saved even if stream is interrupted
+            # Build agent once per alert (cached in session state)
+            if session["agent"] is None:
+                with st.spinner("Initialising investigation agent..."):
+                    system_prompt = build_agent_system_prompt(
+                        alert_id, features_df, explainer, feature_cols, bsi_df,
+                    )
+                    session["system_prompt"] = system_prompt
+                    session["agent"] = create_investigation_agent(
+                        alert_id,
+                        session["customer_id"],
+                        system_prompt,
+                    )
+
+            # Run agent turn — yields tool-call summary then final answer
             response = ""
             try:
-                response = st.write_stream(stream)
+                response = st.write_stream(
+                    run_agent_turn(
+                        session["agent"],
+                        prompt,
+                        session["messages"][:-1],   # history excludes current user turn
+                    )
+                )
             except Exception as e:
-                response = f"_(Response interrupted: {e}. Please try again.)_"
+                response = f"_(Agent error: {e}. Please try again.)_"
                 st.warning(response)
             finally:
                 if response:
