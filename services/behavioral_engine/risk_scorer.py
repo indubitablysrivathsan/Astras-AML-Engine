@@ -104,16 +104,21 @@ def engineer_traditional_features(customers_df, transactions_df):
             'avg_days_between_txns': avg_days,
             'volume_to_income_ratio': usd_volume / (customer['annual_income'] + 1),
             'usd_volume': usd_volume,
-            # PPP asymmetry: avg log(PLI_receiver / PLI_sender) across intl wires.
-            # Positive = money flowing from cheap to expensive countries (suspicious).
-            # Negative = expensive to cheap (e.g. remittance, less suspicious).
-            # Zero = domestic only.
+            # Log-scaled USD volume. AML amount distributions are heavy-tailed —
+            # log stabilizes splits and reduces outlier dominance.
+            # Both kept so XGBoost can use whichever is more predictive.
+            'log_usd_volume': float(np.log1p(usd_volume)),
+            # PPP signal: avg log(PLI_receiver / PLI_sender) across intl wire txns.
+            # Positive = funds flowing from weaker to stronger economy (suspicious).
+            # Negative = stronger to weaker (typical remittance pattern).
+            # Zero = domestic only. ML learns the threshold, not hardcoded.
             'avg_ppp_asymmetry': round(avg_ppp_asymmetry, 4),
             'num_unique_counterparties': ctxns['counterparty'].nunique(),
             'num_unique_locations': ctxns['location'].nunique(),
             # Crypto-specific features
             'num_crypto_txns': len(crypto),
             'total_crypto_volume': crypto['amount'].sum() if len(crypto) > 0 else 0,
+            'log_crypto_volume': float(np.log1p(crypto['amount'].sum())) if len(crypto) > 0 else 0.0,
             'num_currencies_used': num_currencies,
             'crypto_volume_to_income_ratio': (crypto['amount'].sum() / (customer['annual_income'] + 1)) if len(crypto) > 0 else 0,
             'is_suspicious': int(customer['is_suspicious']),
