@@ -384,7 +384,7 @@ def create_investigation_agent(
     agent = create_react_agent(
         llm,
         tools,
-        state_modifier=system_prompt,
+        prompt=system_prompt,
     )
     return agent
 
