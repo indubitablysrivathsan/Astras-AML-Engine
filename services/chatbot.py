@@ -27,6 +27,7 @@ from services.investigation_tools import (
     get_previous_alerts,
     format_transactions_for_context,
 )
+from services.crypto_flow import reconstruct_crypto_flow
 
 
 # ── System prompt template ────────────────────────────────────────────────────
@@ -90,6 +91,9 @@ You are operating under strict compliance rules.
 
 ▌ TRANSACTIONS ({txn_count} total shown)
 {transactions_text}
+
+▌ FIAT-TO-CRYPTO FLOW RECONSTRUCTION (FinCEN FIN-2019-G001)
+{crypto_flow_text}
 
 ══════════════════════════════════════════════════════
   END OF CONTEXT — Answer ONLY from the data above.
@@ -155,25 +159,68 @@ def build_system_prompt(
     prior_alerts = get_previous_alerts(int(alert['customer_id']), alert_id, db_path)
     txn_summary  = get_transaction_summary(alert_id, db_path)
 
-    txn_df           = get_alert_transactions(alert_id, db_path, limit=100)
+    txn_df            = get_alert_transactions(alert_id, db_path, limit=100)
     transactions_text = format_transactions_for_context(txn_df, limit=100)
 
+    # Fiat-to-crypto flow reconstruction (only meaningful for crypto_laundering alerts;
+    # gracefully returns a short "N/A" message for other typologies)
+    try:
+        flow = reconstruct_crypto_flow(int(alert['customer_id']), db_path)
+        crypto_flow_text = flow['narrative']
+        if flow.get('fiat_links'):
+            link_lines = []
+            for lnk in flow['fiat_links']:
+                conf   = lnk['confidence']
+                c_asset = lnk.get('crypto_asset', '')
+                c_amt   = lnk.get('crypto_amount', 0)
+                c_usd   = lnk.get('crypto_usd', 0)
+                exch    = lnk.get('exchange', '')
+                f_date  = lnk.get('fiat_date') or 'N/A'
+                f_amt   = lnk.get('fiat_amount') or 0
+                f_cur   = lnk.get('fiat_currency') or 'USD'
+                f_ctry  = lnk.get('fiat_source_country') or ''
+                f_cp    = lnk.get('fiat_counterparty') or ''
+                if conf == 'UNLINKED':
+                    link_lines.append(
+                        f"  • {lnk['crypto_date']} — {c_amt:.4f} {c_asset} "
+                        f"(≈${c_usd:,.2f}) via {exch} — fiat origin UNLINKED"
+                    )
+                else:
+                    link_lines.append(
+                        f"  • {lnk['crypto_date']} — {c_amt:.4f} {c_asset} "
+                        f"(≈${c_usd:,.2f}) via {exch} [{conf} confidence]\n"
+                        f"    ← fiat: {f_date} {f_amt:,.2f} {f_cur} from {f_cp} [{f_ctry}]"
+                    )
+            crypto_flow_text += "\n\nPer-purchase linkage:\n" + "\n".join(link_lines)
+        if flow.get('chain_summary'):
+            cs = flow['chain_summary']
+            crypto_flow_text += (
+                f"\n\nOn-chain hops: {cs.get('total_hops', 0)} across "
+                f"{cs.get('unique_wallets', 0)} wallets | "
+                f"Patterns: {', '.join(cs.get('patterns_used', []))} | "
+                f"Mixer hops: {cs.get('mixer_hops', 0)} | "
+                f"High-risk exchanges: {', '.join(cs.get('high_risk_exchanges', []) or ['None'])}"
+            )
+    except Exception:
+        crypto_flow_text = "Fiat-to-crypto flow data not available for this alert."
+
     return _SYSTEM_TEMPLATE.format(
-        alert_id          = alert_id,
-        customer_name     = customer['name'],
-        alert_type        = alert['alert_type'].replace('_', ' ').title(),
-        severity          = alert['severity'].title(),
-        total_amount      = float(alert['total_amount']),
-        alert_date        = str(alert['alert_date'])[:10],
-        customer_info     = customer_info,
-        shap_text         = shap_text,
-        risk_score        = float(risk),
-        behavioral_context= behavioral_ctx,
-        counterfactual_text = cf_text,
-        prior_alerts      = prior_alerts,
-        txn_summary       = txn_summary,
-        transactions_text = transactions_text,
-        txn_count         = len(txn_df),
+        alert_id           = alert_id,
+        customer_name      = customer['name'],
+        alert_type         = alert['alert_type'].replace('_', ' ').title(),
+        severity           = alert['severity'].title(),
+        total_amount       = float(alert['total_amount']),
+        alert_date         = str(alert['alert_date'])[:10],
+        customer_info      = customer_info,
+        shap_text          = shap_text,
+        risk_score         = float(risk),
+        behavioral_context = behavioral_ctx,
+        counterfactual_text= cf_text,
+        prior_alerts       = prior_alerts,
+        txn_summary        = txn_summary,
+        transactions_text  = transactions_text,
+        txn_count          = len(txn_df),
+        crypto_flow_text   = crypto_flow_text,
     )
 
 
