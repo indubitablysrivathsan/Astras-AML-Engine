@@ -136,8 +136,66 @@ def get_shap_drivers(alert, features_df, explainer, feature_cols):
         'shap_value': shap_vals[0]
     }).sort_values('shap_value', ascending=False)
 
+    # Attach actual feature values so downstream formatters can produce plain-English findings
+    drivers['feature_value'] = drivers['feature'].apply(
+        lambda f: float(row[f]) if f in row.index else None
+    )
+
     risk_score = row.get('risk_score', 0.0)
     return drivers.head(10), risk_score
+
+
+# Human-readable templates for each feature.
+# {val} = actual feature value, {income} = customer annual income (passed separately).
+_FEATURE_NARRATIVES = {
+    'deposit_withdrawal_ratio':        lambda v, c: f"deposit-to-withdrawal ratio of {v:.1f}x (expected ≤1.0x for a customer with ${c['annual_income']:,.0f} annual income)",
+    'avg_new_counterparties_per_window':lambda v, c: f"average of {v:.1f} new counterparties added per 30-day window, indicating accelerating network expansion",
+    'transaction_date_range_days':     lambda v, c: f"suspicious activity sustained over {v:.0f} days — not a one-off event",
+    'num_unique_locations':            lambda v, c: f"{v:.0f} distinct transaction locations across the review period",
+    'burstiness_index':                lambda v, c: f"burstiness index of {v:.3f} — transactions arrive in irregular high-volume bursts inconsistent with normal payroll or business cycles",
+    'flow_velocity':                   lambda v, c: f"flow velocity of {v:.4f} — funds move through the account very rapidly with minimal retention",
+    'amount_entropy_drift':            lambda v, c: f"amount entropy drift of {v:.3f} — transaction sizes are becoming increasingly irregular and unpredictable over time",
+    'structuring_score':               lambda v, c: f"structuring score of {v:.3f} — repeated transactions just below reporting thresholds detected" if v > 0.1 else None,
+    'counterparty_expansion_rate':     lambda v, c: f"counterparty expansion rate of {v:.2f} new entities per window — unusually rapid introduction of new financial relationships",
+    'funnel_ratio':                    lambda v, c: f"funnel ratio of {v:.1f} — funds received from many sources are concentrated and redistributed to a small number of beneficiaries",
+    'layer_depth':                     lambda v, c: f"{v:.0f} layering hop(s) detected — funds passed through multiple intermediary accounts before reaching their destination",
+    'num_crypto_transactions':         lambda v, c: f"{v:.0f} cryptocurrency exchange transactions identified, converting fiat to digital assets across multiple jurisdictions",
+    'intl_transaction_ratio':          lambda v, c: f"{v:.1%} of all transactions involved international counterparties across multiple high-risk jurisdictions",
+    'cash_transaction_ratio':          lambda v, c: f"{v:.1%} of transactions were cash-based, complicating audit trail reconstruction",
+    'avg_transaction_amount':          lambda v, c: f"average transaction amount of ${v:,.2f} — {v / max(c['annual_income'] / 12, 1):.1f}x the customer's monthly income",
+    'total_transaction_volume':        lambda v, c: f"total transaction volume of ${v:,.2f} — {v / max(c['annual_income'], 1):.1f}x the customer's reported annual income of ${c['annual_income']:,.0f}",
+}
+
+
+def format_shap_as_findings(top_drivers, customer):
+    """
+    Convert SHAP drivers into plain-English compliance findings.
+    Returns a formatted string for inclusion in the SAR prompt.
+    """
+    lines = []
+    for _, d in top_drivers.iterrows():
+        if d['shap_value'] <= 0.05:
+            continue   # skip negligible drivers
+        feat = d['feature']
+        val  = d['feature_value']
+        if val is None:
+            continue
+        fn = _FEATURE_NARRATIVES.get(feat)
+        if fn:
+            try:
+                sentence = fn(val, customer)
+                if sentence:
+                    lines.append(f"• {sentence.capitalize()}")
+            except Exception:
+                pass
+        else:
+            # Fallback for unmapped features: still human-readable
+            label = feat.replace('_', ' ')
+            lines.append(f"• {label.capitalize()}: {val:.3g} (elevated — contributing to risk score)")
+
+    if not lines:
+        return "No significant individual risk drivers identified."
+    return "\n".join(lines)
 
 
 def generate_narrative(alert_id, vectorstore, llm, features_df, explainer,
@@ -153,11 +211,9 @@ def generate_narrative(alert_id, vectorstore, llm, features_df, explainer,
     behavioral_context = format_behavioral_context(alert['customer_id'], features_df, bsi_df)
     top_drivers, risk_score = get_shap_drivers(alert, features_df, explainer, feature_cols)
 
-    # Format SHAP drivers
-    shap_text = "Top Risk Drivers (SHAP Analysis):"
-    for _, d in top_drivers.head(5).iterrows():
-        feat_name = d['feature'].replace('_', ' ').title()
-        shap_text += f"\n- {feat_name}: SHAP impact {d['shap_value']:+.3f}"
+    # Format SHAP drivers as plain-English compliance findings (not raw SHAP numbers)
+    shap_text = "Key Risk Indicators (AI-identified findings):\n"
+    shap_text += format_shap_as_findings(top_drivers.head(7), customer)
 
     # RAG retrieval
     query = f"{alert['alert_type'].replace('_', ' ')} suspicious activity"

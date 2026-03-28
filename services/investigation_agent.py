@@ -341,11 +341,8 @@ def build_agent_system_prompt(
     behavioral_ctx = format_behavioral_context(alert['customer_id'], features_df, bsi_df)
     top_drivers, risk = get_shap_drivers(alert, features_df, explainer, feature_cols)
 
-    shap_lines = []
-    for _, d in top_drivers.head(5).iterrows():
-        name = d['feature'].replace('_', ' ').title()
-        shap_lines.append(f"  • {name}: SHAP {d['shap_value']:+.4f}")
-    shap_text = "\n".join(shap_lines) if shap_lines else "  No SHAP data available."
+    from services.sar.sar_generator import format_shap_as_findings
+    shap_text = format_shap_as_findings(top_drivers.head(7), customer)
 
     prior_alerts = get_previous_alerts(int(alert['customer_id']), alert_id, db_path)
     txn_summary  = get_transaction_summary(alert_id, db_path)
