@@ -167,6 +167,8 @@ def generate_narrative(alert_id, vectorstore, llm, features_df, explainer,
         for doc in retrieved
     ])
 
+    is_crypto = 'crypto' in str(alert['alert_type']).lower()
+
     prompt = f"""You are a compliance officer writing a Suspicious Activity Report (SAR) narrative for FinCEN.
 
 Use these SAR template examples as guidance for structure and tone:
@@ -192,13 +194,24 @@ Risk Score: {risk_score:.2%}
 {behavioral_context}
 
 CRITICAL REQUIREMENTS:
-1. Use ONLY the information provided above - do not fabricate details
-2. Follow this EXACT structure: INTRODUCTION, WHO, WHAT, WHEN, WHERE, WHY SUSPICIOUS, HOW, CONCLUSION
-3. Reference behavioral intelligence findings (BSI, entropy drift, etc.) in WHY SUSPICIOUS section
-4. Use specific amounts, dates, and numbers from the data
-5. Length: 400-600 words
-6. Start directly with "INTRODUCTION" - no preamble
-7. If crypto exchange transactions are present, include a SOURCE OF FIAT FUNDS section between INTRODUCTION and WHO that traces the fiat deposits preceding crypto purchases (per FinCEN guidance on virtual currency SARs)
+1. Use ONLY the information provided above — do not fabricate details.
+2. Follow this EXACT section order (each as a heading on its own line):
+   INTRODUCTION
+   {"SOURCE OF FIAT FUNDS" if is_crypto else ""}
+   WHO
+   WHAT
+   WHEN
+   WHERE
+   WHY SUSPICIOUS
+   HOW
+   CONCLUSION
+   All sections are MANDATORY. Do NOT skip HOW or CONCLUSION.
+3. HOW section: describe the specific mechanism used — how funds moved, methods employed (wire, crypto exchange, cash), how layering/structuring was executed, and how detection was evaded.
+4. SOURCE OF FIAT FUNDS (crypto cases only): trace fiat deposits that preceded crypto purchases per FinCEN FIN-2019-G001.
+5. Reference behavioral intelligence findings (BSI score, entropy drift, burstiness) in WHY SUSPICIOUS.
+6. Use specific amounts, dates, and counterparty names from the data.
+7. Length: 700-1000 words total across all sections.
+8. Start directly with "INTRODUCTION" — no preamble or meta-commentary.
 
 SAR NARRATIVE:
 """

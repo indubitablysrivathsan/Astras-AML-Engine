@@ -404,6 +404,10 @@ elif page == "Generate SAR":
         st.info("Ollama not detected. SAR will be generated using template-based fallback mode. "
                 "Start Ollama with `ollama serve` for AI-powered narratives.")
 
+    # ── SAR result persists in session_state so it survives Streamlit reruns ──
+    if "sar_results" not in st.session_state:
+        st.session_state.sar_results = {}
+
     if st.button("Generate SAR Narrative", type="primary"):
         with st.spinner("Generating SAR narrative with behavioral intelligence..."):
             try:
@@ -413,12 +417,6 @@ elif page == "Generate SAR":
 
                 create_audit_tables()
                 alert, customer, txns = load_alert_data(alert_id)
-
-                ic1, ic2, ic3, ic4 = st.columns(4)
-                ic1.metric("Customer", customer['name'])
-                ic2.metric("Typology", alert['alert_type'].replace('_', ' ').title())
-                ic3.metric("Amount", f"${alert['total_amount']:,.2f}")
-                ic4.metric("Transactions", f"{alert['num_transactions']}")
 
                 # Get SHAP drivers
                 from services.sar.sar_generator import get_shap_drivers
@@ -439,7 +437,7 @@ elif page == "Generate SAR":
 
                     embeddings = OllamaEmbeddings(model="nomic-embed-text")
                     vectorstore = Chroma(persist_directory=CHROMA_DIR, embedding_function=embeddings)
-                    llm = OllamaLLM(model=LLM_MODEL, temperature=0.1, num_predict=2000)
+                    llm = OllamaLLM(model=LLM_MODEL, temperature=0.1, num_predict=3000)
 
                     narrative, audit_trail = generate_narrative(
                         alert_id, vectorstore, llm, features_df, explainer, feature_cols, bsi_df
@@ -481,67 +479,92 @@ elif page == "Generate SAR":
                 save_sar_record(alert_id, int(customer['customer_id']),
                                 narrative, audit_trail, compliance)
 
-                # Display
-                st.subheader("Generated SAR Narrative")
-                if compliance['compliant']:
-                    st.success(f"COMPLIANT - {compliance['sections_found']}/{compliance['sections_total']} sections | "
-                               f"{compliance['word_count']} words")
-                else:
-                    issues = []
-                    if compliance['missing_sections']:
-                        issues.append(f"Missing: {', '.join(compliance['missing_sections'])}")
-                    if not compliance['word_count_ok']:
-                        issues.append(f"Word count: {compliance['word_count']}")
-                    st.warning(f"Review needed - {' | '.join(issues)}")
-
-                st.text_area("SAR Narrative (Editable)", value=narrative, height=500)
-
-                # Compliance
-                st.subheader("Compliance Checklist")
-                cc1, cc2 = st.columns(2)
-                with cc1:
-                    st.write("**Structural**")
-                    st.write(f"- 5W+H Sections: {'PASS' if compliance['has_all_sections'] else 'FAIL'}")
-                    st.write(f"- Word Count ({compliance['word_count']}): {'PASS' if compliance['word_count_ok'] else 'FAIL'}")
-                with cc2:
-                    st.write("**Content**")
-                    st.write(f"- Dollar Amounts: {'PASS' if compliance['has_specific_amounts'] else 'FAIL'}")
-                    st.write(f"- Dates: {'PASS' if compliance['has_specific_dates'] else 'FAIL'}")
-                    st.write(f"- Behavioral Ref: {'PASS' if compliance['has_behavioral_reference'] else 'MISSING'}")
-
-                # SHAP
-                st.subheader("Risk Drivers (SHAP)")
-                if audit_trail.get('shap_top_features'):
-                    sdf = pd.DataFrame(audit_trail['shap_top_features'])
-                    if len(sdf) > 0:
-                        sdf['label'] = sdf['feature'].str.replace('_', ' ').str.title()
-                        fig = px.bar(sdf, x='shap_value', y='label', orientation='h',
-                                     color='shap_value', color_continuous_scale='RdYlGn_r')
-                        fig.update_layout(height=300, showlegend=False)
-                        st.plotly_chart(fig, use_container_width=True)
-
-                # BSI context
-                if audit_trail.get('bsi_score') is not None:
-                    st.info(f"BSI Score: {audit_trail['bsi_score']:.1f}/100 "
-                            f"(Drift: {audit_trail.get('drift_level', 'N/A')})")
-
-                with st.expander("View Audit Trail"):
-                    st.json({k: v for k, v in audit_trail.items() if k != 'narrative'})
-
-                dc1, dc2 = st.columns(2)
-                with dc1:
-                    st.download_button("Download Narrative (.txt)", narrative,
-                                       f"sar_narrative_{alert_id}.txt", "text/plain")
-                with dc2:
-                    doc = json.dumps({'narrative': narrative, 'audit_trail': audit_trail,
-                                      'compliance': compliance}, indent=2, ensure_ascii=False)
-                    st.download_button("Download Full SAR (.json)", doc,
-                                       f"sar_complete_{alert_id}.json", "application/json")
+                # Persist to session_state — survives any subsequent reruns
+                st.session_state.sar_results[alert_id] = {
+                    "narrative":    narrative,
+                    "audit_trail":  audit_trail,
+                    "compliance":   compliance,
+                    "customer":     customer.to_dict() if hasattr(customer, 'to_dict') else dict(customer),
+                    "alert":        alert.to_dict()    if hasattr(alert,    'to_dict') else dict(alert),
+                }
 
             except Exception as e:
                 st.error(f"Error: {e}")
                 import traceback
                 st.code(traceback.format_exc())
+
+    # ── Display result (outside button block — persists across reruns) ─────────
+    if alert_id in st.session_state.sar_results:
+        result     = st.session_state.sar_results[alert_id]
+        narrative  = result["narrative"]
+        audit_trail = result["audit_trail"]
+        compliance  = result["compliance"]
+        customer    = result["customer"]
+        alert_r     = result["alert"]
+
+        ic1, ic2, ic3, ic4 = st.columns(4)
+        ic1.metric("Customer",     customer['name'])
+        ic2.metric("Typology",     alert_r['alert_type'].replace('_', ' ').title())
+        ic3.metric("Amount",       f"${alert_r['total_amount']:,.2f}")
+        ic4.metric("Transactions", f"{alert_r['num_transactions']}")
+
+        st.subheader("Generated SAR Narrative")
+        if compliance['compliant']:
+            st.success(f"COMPLIANT — {compliance['sections_found']}/{compliance['sections_total']} sections | "
+                       f"{compliance['word_count']} words")
+        else:
+            issues = []
+            if compliance['missing_sections']:
+                issues.append(f"Missing: {', '.join(compliance['missing_sections'])}")
+            if not compliance['word_count_ok']:
+                issues.append(f"Word count: {compliance['word_count']}")
+            st.warning(f"Review needed — {' | '.join(issues)}")
+
+        st.text_area("SAR Narrative (Editable)", value=narrative, height=500,
+                     key=f"sar_text_{alert_id}")
+
+        # Compliance checklist
+        st.subheader("Compliance Checklist")
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            st.write("**Structural**")
+            st.write(f"- 5W+H Sections: {'PASS' if compliance['has_all_sections'] else 'FAIL'}")
+            st.write(f"- Word Count ({compliance['word_count']}): {'PASS' if compliance['word_count_ok'] else 'FAIL'}")
+        with cc2:
+            st.write("**Content**")
+            st.write(f"- Dollar Amounts: {'PASS' if compliance['has_specific_amounts'] else 'FAIL'}")
+            st.write(f"- Dates: {'PASS' if compliance['has_specific_dates'] else 'FAIL'}")
+            st.write(f"- Behavioral Ref: {'PASS' if compliance['has_behavioral_reference'] else 'MISSING'}")
+
+        # SHAP chart
+        st.subheader("Risk Drivers (SHAP)")
+        if audit_trail.get('shap_top_features'):
+            sdf = pd.DataFrame(audit_trail['shap_top_features'])
+            if len(sdf) > 0:
+                sdf['label'] = sdf['feature'].str.replace('_', ' ').str.title()
+                fig = px.bar(sdf, x='shap_value', y='label', orientation='h',
+                             color='shap_value', color_continuous_scale='RdYlGn_r')
+                fig.update_layout(height=300, showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+
+        if audit_trail.get('bsi_score') is not None:
+            st.info(f"BSI Score: {audit_trail['bsi_score']:.1f}/100 "
+                    f"(Drift: {audit_trail.get('drift_level', 'N/A')})")
+
+        with st.expander("View Audit Trail"):
+            st.json({k: v for k, v in audit_trail.items() if k != 'narrative'})
+
+        dc1, dc2 = st.columns(2)
+        with dc1:
+            st.download_button("Download Narrative (.txt)", narrative,
+                               f"sar_narrative_{alert_id}.txt", "text/plain",
+                               key=f"dl_txt_{alert_id}")
+        with dc2:
+            doc = json.dumps({'narrative': narrative, 'audit_trail': audit_trail,
+                              'compliance': compliance}, indent=2, ensure_ascii=False)
+            st.download_button("Download Full SAR (.json)", doc,
+                               f"sar_complete_{alert_id}.json", "application/json",
+                               key=f"dl_json_{alert_id}")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -632,7 +655,6 @@ elif page == "Investigation":
             # Build system prompt once per alert (cached in session state)
             if session["system_prompt"] is None:
                 with st.spinner("Loading alert context..."):
-                    # Pull counterfactual if already computed (from Counterfactual page cache)
                     cf_data = st.session_state.get(f"cf_cache_{alert_id}")
                     session["system_prompt"] = build_system_prompt(
                         alert_id, features_df, explainer, feature_cols, bsi_df,
@@ -648,9 +670,17 @@ elif page == "Investigation":
                 prompt,
                 session["messages"][:-1],   # history excludes current user turn
             )
-            response = st.write_stream(stream)
 
-        session["messages"].append({"role": "assistant", "content": response})
+            # Guard: ensure response is always saved even if stream is interrupted
+            response = ""
+            try:
+                response = st.write_stream(stream)
+            except Exception as e:
+                response = f"_(Response interrupted: {e}. Please try again.)_"
+                st.warning(response)
+            finally:
+                if response:
+                    session["messages"].append({"role": "assistant", "content": response})
 
 
 # ══════════════════════════════════════════════════════════════════════
