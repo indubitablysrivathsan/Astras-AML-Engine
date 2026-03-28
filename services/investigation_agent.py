@@ -204,58 +204,44 @@ def _make_tools(alert_id: int, customer_id: int, db_path: str):
     @tool
     def get_crypto_flow() -> str:
         """
-        Return the complete fiat-to-cryptocurrency flow reconstruction for this customer.
-        Includes:
-          - Which fiat deposits preceded each crypto purchase (confidence-scored linkage)
-          - On-chain hop analysis (mixer nodes, wallet hops, exchange KYC arbitrage)
-          - SOURCE OF FIAT FUNDS narrative per FinCEN FIN-2019-G001 guidance
-        Call this whenever the analyst asks about source of funds, crypto trail,
+        Return a compact summary of the fiat-to-cryptocurrency flow for this customer.
+        Covers: total crypto purchased, how many fiat deposits were linked vs unlinked,
+        on-chain hop count, mixer usage, and high-risk exchanges.
+        The full narrative is already in the system context above — this tool returns
+        key statistics for quick reference.
+        Call this when the analyst asks about source of funds, crypto trail,
         on-chain activity, blockchain hops, or mixer usage.
         """
         try:
             from services.crypto_flow import reconstruct_crypto_flow
             flow = reconstruct_crypto_flow(customer_id, db_path)
 
-            parts = [flow['narrative']]
+            links = flow.get('fiat_links', [])
+            linked   = [l for l in links if l['confidence'] != 'UNLINKED']
+            unlinked = [l for l in links if l['confidence'] == 'UNLINKED']
+            total_crypto_usd = sum(l.get('crypto_usd', 0) for l in links)
 
-            if flow.get('fiat_links'):
-                parts.append("\nPer-purchase linkage detail:")
-                for lnk in flow['fiat_links']:
-                    conf  = lnk['confidence']
-                    asset = lnk.get('crypto_asset', '')
-                    c_amt = lnk.get('crypto_amount', 0)
-                    c_usd = lnk.get('crypto_usd', 0)
-                    exch  = lnk.get('exchange', '')
-                    if conf == 'UNLINKED':
-                        parts.append(
-                            f"  • {lnk['crypto_date']} — {c_amt:.4f} {asset} "
-                            f"(≈${c_usd:,.2f} USD) via {exch} — UNLINKED (no fiat deposit "
-                            f"found within {10}-day window)"
-                        )
-                    else:
-                        parts.append(
-                            f"  • {lnk['crypto_date']} — {c_amt:.4f} {asset} "
-                            f"(≈${c_usd:,.2f} USD) via {exch} [{conf}]\n"
-                            f"    ← funded by: {lnk['fiat_date']}  "
-                            f"{lnk['fiat_amount']:,.2f} {lnk['fiat_currency']} "
-                            f"from {lnk['fiat_counterparty']} [{lnk['fiat_source_country']}]  "
-                            f"(deviation {lnk['amount_deviation']:.0%}, "
-                            f"{lnk['days_before']}d before crypto purchase)"
-                        )
+            # Top fiat counterparty by USD value
+            if linked:
+                top = max(linked, key=lambda l: l.get('fiat_usd') or 0)
+                top_cp   = top.get('fiat_counterparty', 'unknown')
+                top_ctry = top.get('fiat_source_country', '')
+            else:
+                top_cp = top_ctry = 'N/A'
 
-            cs = flow.get('chain_summary', {})
-            if cs:
-                parts.append(
-                    f"\nOn-chain summary: {cs.get('total_hops',0)} hops | "
-                    f"{cs.get('unique_wallets',0)} wallets | "
-                    f"patterns: {', '.join(cs.get('patterns_used',[]))} | "
-                    f"mixer hops: {cs.get('mixer_hops',0)} | "
-                    f"entry exchanges: {', '.join(cs.get('entry_exchanges',[]))} | "
-                    f"exit exchanges: {', '.join(cs.get('cashout_exchanges',[]))} | "
-                    f"high-risk exchanges: {', '.join(cs.get('high_risk_exchanges',[]) or ['none'])}"
-                )
-
-            return "\n".join(parts)
+            cs = flow.get('chain_summary') or {}
+            lines = [
+                f"Crypto flow summary for customer {customer_id}:",
+                f"  Total crypto purchased : ≈${total_crypto_usd:,.2f} USD across {len(links)} purchase(s)",
+                f"  Fiat linkage           : {len(linked)} linked | {len(unlinked)} unlinked",
+                f"  Top fiat source        : {top_cp} [{top_ctry}]",
+                f"  On-chain hops          : {cs.get('total_hops', 0)} across {cs.get('unique_wallets', 0)} wallets",
+                f"  Mixer hops             : {cs.get('mixer_hops', 0)}",
+                f"  Patterns               : {', '.join(cs.get('patterns_used', [])) or 'none'}",
+                f"  High-risk exchanges    : {', '.join(cs.get('high_risk_exchanges', []) or ['none'])}",
+                f"  (Full narrative is in the system context above.)",
+            ]
+            return "\n".join(lines)
         except Exception as e:
             return f"Crypto flow data not available: {e}"
 
@@ -414,7 +400,7 @@ def create_investigation_agent(
     llm = ChatOllama(
         model          = llm_model,
         temperature    = 0.0,
-        num_predict    = 2000,   # enough for tool result + summary; repeat_penalty handles loops
+        num_predict    = 2500,   # enough for tool result + summary; repeat_penalty handles loops
         keep_alive     = -1,
         repeat_penalty = 1.3,
     )
