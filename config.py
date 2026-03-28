@@ -58,7 +58,7 @@ XGBOOST_PARAMS = {
 }
 
 # LLM
-LLM_MODEL = 'mistral:latest'
+LLM_MODEL = 'mistral:7b'
 EMBEDDING_MODEL = 'nomic-embed-text'
 LLM_TEMPERATURE = 0.1
 LLM_MAX_TOKENS = 2000
