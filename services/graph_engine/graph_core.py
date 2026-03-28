@@ -259,17 +259,11 @@ class GraphAnalyzer:
         pr = cugraph.pagerank(self.G_cu)
         self.pagerank = dict(zip(pr["vertex"].to_pandas().astype(str), pr["pagerank"].to_pandas()))
 
-        # Approximate betweenness centrality — store_transposed=False graph, k pivots to avoid OOM
-        sample_k = GRAPH_CONFIG.get("centrality_sample_size", 500)
-        try:
-            bc = cugraph.betweenness_centrality(self.G_cu_bc, k=sample_k)
-            self.betweenness = dict(
-                zip(bc["vertex"].to_pandas().astype(str), bc["betweenness_centrality"].to_pandas())
-            )
-            print(f"  [graph] Betweenness centrality: GPU approx (k={sample_k})")
-        except (RuntimeError, MemoryError) as e:
-            print(f"  [graph] GPU BC failed ({e}), falling back to CPU sampling (k={sample_k}) …")
-            self.betweenness = nx.betweenness_centrality(self.G, k=sample_k, weight="weight")
+        # Betweenness centrality — cugraph pre-allocates full graph memory regardless of k,
+        # causing OOM on large graphs. Use CPU approximate BC with small k instead.
+        sample_k = GRAPH_CONFIG.get("centrality_sample_size") or 300
+        print(f"  [graph] Betweenness centrality: CPU approx (k={sample_k})")
+        self.betweenness = nx.betweenness_centrality(self.G, k=sample_k, weight="weight")
 
         # HITS — no cugraph impl; fall back to NetworkX
         self._hits_nx()
@@ -277,12 +271,9 @@ class GraphAnalyzer:
     def _centrality_cpu(self):
         self.pagerank = nx.pagerank(self.G, weight="weight")
 
-        sample_k = GRAPH_CONFIG.get("centrality_sample_size")
-        n = self.G.number_of_nodes()
-        if sample_k and n > sample_k:
-            self.betweenness = nx.betweenness_centrality(self.G, k=sample_k, weight="weight")
-        else:
-            self.betweenness = nx.betweenness_centrality(self.G, weight="weight")
+        sample_k = GRAPH_CONFIG.get("centrality_sample_size") or 300
+        print(f"  [graph] Betweenness centrality: CPU approx (k={sample_k})")
+        self.betweenness = nx.betweenness_centrality(self.G, k=sample_k, weight="weight")
 
         self._hits_nx()
 
