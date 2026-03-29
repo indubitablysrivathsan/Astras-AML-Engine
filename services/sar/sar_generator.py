@@ -264,8 +264,8 @@ CRITICAL REQUIREMENTS:
    All sections are MANDATORY. Do NOT skip HOW or CONCLUSION.
 3. HOW section: describe the specific mechanism used — how funds moved, methods employed (wire, crypto exchange, cash), how layering/structuring was executed, and how detection was evaded.
 4. SOURCE OF FIAT FUNDS (crypto cases only): trace fiat deposits that preceded crypto purchases per FinCEN FIN-2019-G001.
-5. Reference behavioral intelligence findings (BSI score, entropy drift, burstiness) in WHY SUSPICIOUS.
-6. Use specific amounts, dates, and counterparty names from the data.
+5. Reference behavioral intelligence findings in WHY SUSPICIOUS — you MUST use at least two of these exact terms verbatim: "BSI", "entropy drift", "burstiness", "counterparty expansion", "flow velocity", "structuring score".
+6. Use specific amounts, dates, and counterparty names from the data. Write all dates as "Month D, YYYY" (e.g., "January 1, 2025") — do NOT use ordinal suffixes like 1st, 2nd, 3rd, 4th, 30th.
 7. Length: 700-1000 words total across all sections.
 8. Start directly with "INTRODUCTION" — no preamble or meta-commentary.
 
