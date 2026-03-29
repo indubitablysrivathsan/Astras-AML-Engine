@@ -63,7 +63,7 @@ def load_all_data():
     try:
         import requests
         requests.post(
-            "http://localhost:11434/api/generate",
+            "http://127.0.0.1:11434/api/generate",
             json={"model": LLM_MODEL, "keep_alive": -1},
             timeout=5,
         )
@@ -435,9 +435,9 @@ elif page == "Generate SAR":
                     from langchain_ollama import OllamaEmbeddings, OllamaLLM
                     from services.sar.sar_generator import generate_narrative
 
-                    embeddings = OllamaEmbeddings(model="nomic-embed-text")
+                    embeddings = OllamaEmbeddings(model="nomic-embed-text", base_url="http://127.0.0.1:11434")
                     vectorstore = Chroma(persist_directory=CHROMA_DIR, embedding_function=embeddings)
-                    llm = OllamaLLM(model=LLM_MODEL, temperature=0.1, num_predict=3000)
+                    llm = OllamaLLM(model=LLM_MODEL, temperature=0.1, num_predict=3000, base_url="http://127.0.0.1:11434")
 
                     narrative, audit_trail = generate_narrative(
                         alert_id, vectorstore, llm, features_df, explainer, feature_cols, bsi_df

@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import sqlite3
 import json
+import re
 import shap
 import joblib
 import os
@@ -79,6 +80,31 @@ Currencies Used: {', '.join(currencies_used)}"""
         summary += line
 
     return summary
+
+
+def get_fiat_funds_narrative(customer_id, db_path=DB_PATH):
+    """
+    Build SOURCE OF FIAT FUNDS paragraph using crypto_flow reconstruction.
+    crypto_flow now reads from the crypto_fiat_links ground-truth table first,
+    falling back to probabilistic inference only if the table is absent.
+    Returns the narrative string, or None if no crypto activity found.
+    """
+    try:
+        from crypto_flow import reconstruct_crypto_flow
+    except ImportError:
+        try:
+            from services.crypto_flow import reconstruct_crypto_flow
+        except ImportError as e:
+            print(f"[WARN] crypto_flow import failed: {e}")
+            return None
+    try:
+        flow = reconstruct_crypto_flow(int(customer_id), db_path)
+        narrative = flow.get('narrative', '')
+        if narrative and 'No cryptocurrency' not in narrative:
+            return narrative
+    except Exception as e:
+        print(f"[WARN] reconstruct_crypto_flow failed for customer {customer_id}: {e}")
+    return None
 
 
 def format_behavioral_context(customer_id, features_df, bsi_df=None):
@@ -206,9 +232,11 @@ def generate_narrative(alert_id, vectorstore, llm, features_df, explainer,
     print(f"{'=' * 60}")
 
     alert, customer, transactions = load_alert_data(alert_id, db_path)
+    is_crypto = 'crypto' in str(alert['alert_type']).lower()
     customer_info = format_customer_info(customer)
     txn_summary = format_transaction_summary(transactions)
     behavioral_context = format_behavioral_context(alert['customer_id'], features_df, bsi_df)
+    fiat_narrative = get_fiat_funds_narrative(alert['customer_id'], db_path) if is_crypto else None
     top_drivers, risk_score = get_shap_drivers(alert, features_df, explainer, feature_cols)
 
     # Format SHAP drivers as plain-English compliance findings (not raw SHAP numbers)
@@ -223,7 +251,10 @@ def generate_narrative(alert_id, vectorstore, llm, features_df, explainer,
         for doc in retrieved
     ])
 
-    is_crypto = 'crypto' in str(alert['alert_type']).lower()
+    fiat_block = (
+        "\nSOURCE OF FIAT FUNDS (PRE-WRITTEN — copy this text verbatim into that section):\n"
+        + fiat_narrative + "\n"
+    ) if fiat_narrative else ""
 
     prompt = f"""You are a compliance officer writing a Suspicious Activity Report (SAR) narrative for FinCEN.
 
@@ -248,7 +279,7 @@ Risk Score: {risk_score:.2%}
 {shap_text}
 
 {behavioral_context}
-
+{fiat_block}
 CRITICAL REQUIREMENTS:
 1. Use ONLY the information provided above — do not fabricate details.
 2. Follow this EXACT section order (each as a heading on its own line):
@@ -263,7 +294,7 @@ CRITICAL REQUIREMENTS:
    CONCLUSION
    All sections are MANDATORY. Do NOT skip HOW or CONCLUSION.
 3. HOW section: describe the specific mechanism used — how funds moved, methods employed (wire, crypto exchange, cash), how layering/structuring was executed, and how detection was evaded.
-4. SOURCE OF FIAT FUNDS (crypto cases only): trace fiat deposits that preceded crypto purchases per FinCEN FIN-2019-G001.
+4. SOURCE OF FIAT FUNDS (crypto cases only): copy the pre-written paragraph above word for word. Do not rephrase, summarize, or replace any part of it.
 5. Reference behavioral intelligence findings in WHY SUSPICIOUS — you MUST use at least two of these exact terms verbatim: "BSI", "entropy drift", "burstiness", "counterparty expansion", "flow velocity", "structuring score".
 6. Use specific amounts, dates, and counterparty names from the data. Write all dates as "Month D, YYYY" (e.g., "January 1, 2025") — do NOT use ordinal suffixes like 1st, 2nd, 3rd, 4th, 30th.
 7. Length: 700-1000 words total across all sections.
@@ -274,6 +305,9 @@ SAR NARRATIVE:
 
     print(f"Generating narrative with {LLM_MODEL}...")
     narrative = llm.invoke(prompt).strip()
+    # Strip ordinal suffixes so compliance date regex always matches
+    # e.g. "January 1st" -> "January 1", "April 30th" -> "April 30"
+    narrative = re.sub(r'\b(\d{1,2})(st|nd|rd|th)\b', r'\1', narrative)
     print(f"[OK] {len(narrative.split())} words generated")
 
     # Build audit trail

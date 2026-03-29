@@ -70,6 +70,48 @@ def _load_chain_data(customer_id: int, db_path: str):
 
 # ── Core linkage logic ────────────────────────────────────────────────────────
 
+def _load_exact_fiat_links(customer_id: int, db_path: str) -> list:
+    """
+    Load ground-truth fiat->crypto links from crypto_fiat_links table.
+    Returns list of link dicts in the same format as _link_fiat_to_crypto,
+    or empty list if the table doesn't exist or has no rows for this customer.
+    """
+    try:
+        conn = sqlite3.connect(db_path)
+        df = pd.read_sql(
+            "SELECT * FROM crypto_fiat_links WHERE customer_id = ? ORDER BY cycle_id",
+            conn, params=(customer_id,)
+        )
+        conn.close()
+    except Exception:
+        return []
+
+    if df.empty:
+        return []
+
+    links = []
+    for _, row in df.iterrows():
+        links.append({
+            'crypto_txn_id':       None,
+            'crypto_date':         str(row.get('buy_date', '')),
+            'crypto_asset':        str(row.get('crypto_asset', '')),
+            'crypto_amount':       float(row.get('crypto_amount', 0)),
+            'crypto_usd':          float(row.get('fiat_usd', 0)),  # approx
+            'exchange':            str(row.get('exchange', 'Unknown')),
+            'fiat_txn_id':         None,
+            'fiat_date':           str(row.get('fiat_date', '')),
+            'fiat_amount':         float(row.get('fiat_amount', 0)),
+            'fiat_currency':       str(row.get('fiat_currency', '')),
+            'fiat_usd':            float(row.get('fiat_usd', 0)),
+            'fiat_source_country': str(row.get('fiat_source_country', '')),
+            'fiat_counterparty':   str(row.get('fiat_counterparty', '')),
+            'confidence':          'EXACT',
+            'days_before':         None,
+            'amount_deviation':    0.0,
+        })
+    return links
+
+
 def _link_fiat_to_crypto(bank_df: pd.DataFrame) -> list:
     """
     For each crypto purchase (withdrawal via crypto_exchange) find the best
@@ -208,7 +250,9 @@ def reconstruct_crypto_flow(customer_id: int, db_path: str = DB_PATH) -> dict:
     bank_df              = _load_customer_bank_txns(customer_id, db_path)
     chain_df, wallets_df = _load_chain_data(customer_id, db_path)
 
-    links        = _link_fiat_to_crypto(bank_df)
+    # Use ground-truth links if available; fall back to probabilistic inference
+    exact_links = _load_exact_fiat_links(customer_id, db_path)
+    links       = exact_links if exact_links else _link_fiat_to_crypto(bank_df)
     chain_summary = _summarise_chain(chain_df, wallets_df)
 
     narrative = _build_fiat_funds_narrative(customer_id, bank_df, links, chain_summary)

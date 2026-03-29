@@ -46,7 +46,7 @@ GENESIS_DATE = '2020-01-01'   # reference for simulated block height
 
 def _btc_bech32(seed: str) -> str:
     """Generate a deterministic-looking BTC bech32 (native SegWit) address."""
-    h = hashlib.sha256(seed.encode()).hexdigest()
+    h = hashlib.sha256(seed.encode()).hexdigest() * 2  # sha256=64 chars; *2 ensures >76 needed
     # bech32 addresses are 42 chars: bc1q + 38 alphanumeric (lowercase, no b/i/o)
     charset = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
     body = ''.join(charset[int(h[i:i+2], 16) % len(charset)] for i in range(0, 38 * 2, 2))
@@ -55,7 +55,7 @@ def _btc_bech32(seed: str) -> str:
 
 def _btc_legacy(seed: str) -> str:
     """Generate a deterministic-looking BTC legacy (P2PKH) address."""
-    h = hashlib.md5(seed.encode()).hexdigest()
+    h = hashlib.md5(seed.encode()).hexdigest() * 3   # md5=32 chars; *3 ensures >66 needed
     charset = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
     body = ''.join(charset[int(h[i:i+2], 16) % len(charset)] for i in range(0, 33 * 2, 2))
     return '1' + body[:33]

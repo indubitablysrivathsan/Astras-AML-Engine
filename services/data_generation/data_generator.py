@@ -726,8 +726,12 @@ def generate_crypto_laundering_pattern(customer, start_date, num_cycles=5):
     Counterparties are BURSTY: a small pool of shell entities is reused
     across cycles (triggers counterparty-concentration signals), with
     occasional new entities injected mid-run (triggers expansion signals).
+
+    Returns (txns, fiat_links) — fiat_links is the ground-truth table
+    recording every fiat deposit -> crypto purchase pairing per cycle.
     """
     txns = []
+    fiat_links = []
     preferred = customer.get('preferred_crypto', np.random.choice(SUPPORTED_CRYPTO))
     num_cycles = np.random.randint(3, 7)
 
@@ -788,6 +792,25 @@ def generate_crypto_laundering_pattern(customer, start_date, num_cycles=5):
                               country=src_country, currency=preferred,
                               crypto_asset=preferred))
 
+        # --- Record ground-truth fiat->crypto link for this cycle ---
+        fiat_usd_rate = get_usd_rate(src_currency, cs)
+        fiat_links.append({
+            'customer_id':           customer['customer_id'],
+            'cycle_id':              cycle,
+            'fiat_date':             cs.strftime('%Y-%m-%d'),
+            'fiat_amount':           round(fiat_amt, 2),
+            'fiat_currency':         src_currency,
+            'fiat_usd':              round(fiat_amt * fiat_usd_rate, 2),
+            'fiat_counterparty':     shell[0],
+            'fiat_counterparty_bank': shell[2],
+            'fiat_source_country':   src_country,
+            'crypto_asset':          preferred,
+            'crypto_amount':         round(crypto_amt, 8),
+            'exchange':              exchange,
+            'buy_date':              (cs + buy_delay).strftime('%Y-%m-%d'),
+            'confidence':            'EXACT',
+        })
+
         # --- Stage 3: Cross-border crypto deposit (different country/exchange) ---
         xfer_delay = timedelta(days=np.random.randint(1, 14))
         dest_country, dest_currency = corridors[(cycle + 2) % len(corridors)]
@@ -813,7 +836,7 @@ def generate_crypto_laundering_pattern(customer, start_date, num_cycles=5):
                               dest_shell[1], dest_shell[2], dest_country,
                               currency=dest_currency))
 
-    return txns
+    return txns, fiat_links
 
 
 PATTERN_GENERATORS = {
@@ -834,10 +857,15 @@ PATTERN_GENERATORS = {
 def generate_all_transactions(customers_df, start_date=START_DATE):
     print("\nGenerating transactions...")
     all_txns = []
+    all_fiat_links = []
     for idx, customer in customers_df.iterrows():
         if customer['is_suspicious']:
             gen = PATTERN_GENERATORS.get(customer['typology'], generate_structuring_pattern)
-            suspicious_txns = gen(customer, start_date)
+            if customer['typology'] == 'crypto_laundering':
+                suspicious_txns, fiat_links = gen(customer, start_date)
+                all_fiat_links.extend(fiat_links)
+            else:
+                suspicious_txns = gen(customer, start_date)
             normal_txns = generate_normal_transactions(customer, start_date)
             # Mix MORE normal transactions in (50-80% of total, not just 20)
             num_normal = int(len(suspicious_txns) * np.random.uniform(0.5, 1.5))
@@ -854,7 +882,8 @@ def generate_all_transactions(customers_df, start_date=START_DATE):
             all_txns.extend(generate_normal_transactions(customer, start_date))
         if (idx + 1) % 200 == 0:
             print(f"  Processed {idx + 1:,} / {len(customers_df):,} customers")
-    return pd.DataFrame(all_txns)
+    fiat_links_df = pd.DataFrame(all_fiat_links) if all_fiat_links else pd.DataFrame()
+    return pd.DataFrame(all_txns), fiat_links_df
 
 
 def create_alerts(customers_df, transactions_df):
@@ -926,7 +955,7 @@ def create_alerts(customers_df, transactions_df):
 
 
 def save_to_database(customers_df, transactions_df, alerts_df,
-                     chain_df=None, wallets_df=None, db_path=DB_PATH):
+                     chain_df=None, wallets_df=None, fiat_links_df=None, db_path=DB_PATH):
     print(f"\nSaving to {db_path}")
     conn = sqlite3.connect(db_path)
     customers_df.to_sql('customers', conn, if_exists='replace', index=False)
@@ -938,6 +967,9 @@ def save_to_database(customers_df, transactions_df, alerts_df,
     if wallets_df is not None and not wallets_df.empty:
         wallets_df.to_sql('crypto_wallets', conn, if_exists='replace', index=False)
         print(f"  Crypto wallets:    {len(wallets_df):,}")
+    if fiat_links_df is not None and not fiat_links_df.empty:
+        fiat_links_df.to_sql('crypto_fiat_links', conn, if_exists='replace', index=False)
+        print(f"  Crypto fiat links: {len(fiat_links_df):,}")
     conn.close()
     print(f"  Customers: {len(customers_df):,} | Transactions: {len(transactions_df):,} | Alerts: {len(alerts_df):,}")
 
@@ -951,7 +983,7 @@ def run():
     load_rates()
 
     customers_df = generate_customers()
-    transactions_df = generate_all_transactions(customers_df)
+    transactions_df, fiat_links_df = generate_all_transactions(customers_df)
     transactions_df['transaction_id'] = range(len(transactions_df))
     transactions_df = transactions_df.sort_values(['customer_id', 'transaction_date'])
     alerts_df = create_alerts(customers_df, transactions_df)
@@ -976,7 +1008,7 @@ def run():
     wallets_df = pd.concat(all_wallets, ignore_index=True) if all_wallets else pd.DataFrame()
     print(f"  Chain txns: {len(chain_df):,}  |  Wallets: {len(wallets_df):,}")
 
-    save_to_database(customers_df, transactions_df, alerts_df, chain_df, wallets_df)
+    save_to_database(customers_df, transactions_df, alerts_df, chain_df, wallets_df, fiat_links_df)
 
     os.makedirs(os.path.join(DATA_DIR, 'generated'), exist_ok=True)
     customers_df.to_csv(os.path.join(DATA_DIR, 'generated', 'customers.csv'), index=False)
